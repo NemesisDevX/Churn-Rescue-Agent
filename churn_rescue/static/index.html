@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Churn-Rescue Command Center</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --radar-color: #38bdf8;
+      --radar-speed: 1.2s;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+      min-height: 100vh;
+    }
+    h1 { margin: 0 0 0.5rem; }
+    .subtitle { color: var(--muted); margin-bottom: 2rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: 360px 1fr 320px;
+      gap: 1.5rem;
+      width: 100%;
+      max-width: 1300px;
+      align-items: start;
+    }
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--panel);
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+
+    /* Gauge */
+    .gauge-wrap {
+      position: relative;
+      width: 300px;
+      height: 160px;
+      margin: 1rem auto;
+    }
+    .gauge-bg {
+      width: 300px;
+      height: 150px;
+      background: conic-gradient(
+        from 180deg at 50% 100%,
+        transparent 0deg 90deg,
+        #f44336 90deg 150deg,
+        #ffeb3b 150deg 210deg,
+        #4caf50 210deg 270deg,
+        transparent 270deg 360deg
+      );
+      clip-path: circle(150px at 50% 100%);
+    }
+    .needle {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      width: 4px;
+      height: 130px;
+      background: #e2e8f0;
+      border-radius: 2px;
+      transform: translateX(-50%) rotate(0deg);
+      transform-origin: bottom center;
+      transition: transform 0.35s ease-out;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .pivot {
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      width: 18px;
+      height: 18px;
+      background: #e2e8f0;
+      border-radius: 50%;
+      transform: translateX(-50%);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .sentiment-label {
+      text-align: center;
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-top: 0.5rem;
+    }
+    .sentiment-label.negative { color: #f44336; }
+    .sentiment-label.neutral { color: #ffeb3b; }
+    .sentiment-label.positive { color: #4caf50; }
+    .legend {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+    }
+
+    /* Radar / Pulse */
+    .radar-title {
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .radar {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      margin: 0 auto 1rem;
+    }
+    .radar-core {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 24px;
+      height: 24px;
+      transform: translate(-50%, -50%);
+      background: var(--radar-color);
+      border-radius: 50%;
+      box-shadow: 0 0 20px var(--radar-color), 0 0 40px var(--radar-color);
+      z-index: 3;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .radar-ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 140px;
+      height: 140px;
+      transform: translate(-50%, -50%) scale(0.2);
+      border: 2px solid var(--radar-color);
+      border-radius: 50%;
+      opacity: 0.8;
+      box-shadow: 0 0 20px var(--radar-color), inset 0 0 20px var(--radar-color);
+      animation: radar-pulse var(--radar-speed) ease-out infinite;
+      z-index: 2;
+    }
+    .radar-ring:nth-child(2) { animation-delay: 0s; }
+    .radar-ring:nth-child(3) { animation-delay: calc(var(--radar-speed) * 0.33); }
+    .radar-ring:nth-child(4) { animation-delay: calc(var(--radar-speed) * 0.66); }
+
+    @keyframes radar-pulse {
+      0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.8; }
+      100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+    }
+
+    /* Status lines */
+    .status-line {
+      display: flex;
+      justify-content: space-between;
+      margin: 0.5rem 0;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #334155;
+    }
+    .offer {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    /* Transcript */
+    .transcript {
+      max-height: 520px;
+      overflow-y: auto;
+      padding-right: 0.5rem;
+    }
+    .turn {
+      margin: 0.75rem 0;
+      padding: 0.75rem;
+      border-radius: 10px;
+      background: #0f172a;
+      border-left: 4px solid var(--accent);
+    }
+    .turn.user { border-left-color: #f43f5e; }
+    .turn.bot { border-left-color: #38bdf8; }
+    .speaker {
+      font-weight: 700;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    .text { line-height: 1.4; }
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      margin-top: 2rem;
+    }
+
+    /* Mock Phone */
+    .phone-title {
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+    .phone {
+      width: 100%;
+      max-width: 280px;
+      margin: 0 auto;
+      background: #0f172a;
+      border: 10px solid #334155;
+      border-radius: 36px;
+      padding: 8px 10px 24px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    }
+    .phone-notch {
+      width: 80px;
+      height: 18px;
+      background: #334155;
+      border-radius: 0 0 10px 10px;
+      margin: 0 auto 8px;
+    }
+    .phone-screen {
+      height: 440px;
+      background: #0b141a;
+      border-radius: 24px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .phone-header {
+      background: #1f2c34;
+      padding: 0.75rem;
+      text-align: center;
+      border-bottom: 1px solid #2a3b44;
+    }
+    .phone-header .app {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #e2e8f0;
+    }
+    .phone-header .status {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+    .phone-messages {
+      flex: 1;
+      padding: 1rem 0.75rem;
+      overflow-y: auto;
+    }
+    .message-bubble {
+      background: #005c4b;
+      color: #fff;
+      border-radius: 16px 16px 4px 16px;
+      padding: 0.75rem 1rem;
+      max-width: 85%;
+      margin: 0 0 0.75rem auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      line-height: 1.4;
+      font-size: 0.9rem;
+    }
+    .message-meta {
+      text-align: right;
+      font-size: 0.65rem;
+      color: #99beb3;
+      margin-top: 0.25rem;
+    }
+    .phone-placeholder {
+      color: var(--muted);
+      text-align: center;
+      font-size: 0.85rem;
+      margin-top: 4rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Churn-Rescue Command Center</h1>
+  <p class="subtitle">Live sentiment, transcript, and retention offer updates</p>
+
+  <div class="grid">
+    <!-- Left: Gauge + Radar -->
+    <div class="panel">
+      <h2>Live Sentiment</h2>
+      <div class="gauge-wrap">
+        <div class="gauge-bg"></div>
+        <div class="needle" id="needle"></div>
+        <div class="pivot"></div>
+      </div>
+      <div class="legend">
+        <span>Angry</span>
+        <span>Neutral</span>
+        <span>Happy</span>
+      </div>
+      <div class="sentiment-label" id="sentiment-label">Waiting...</div>
+
+      <div class="radar-title">Sentiment Radar</div>
+      <div class="radar" id="radar">
+        <div class="radar-core"></div>
+        <div class="radar-ring"></div>
+        <div class="radar-ring"></div>
+        <div class="radar-ring"></div>
+      </div>
+
+      <div class="status-line">
+        <span>Call</span>
+        <span id="call-id">-</span>
+      </div>
+      <div class="status-line">
+        <span>Customer</span>
+        <span id="customer-name">-</span>
+      </div>
+      <div class="status-line">
+        <span>Status</span>
+        <span id="call-status">-</span>
+      </div>
+      <div class="status-line">
+        <span>Offer</span>
+        <span class="offer" id="discount-offer">-</span>
+      </div>
+      <div class="status-line">
+        <span>Accepted</span>
+        <span id="accepted">-</span>
+      </div>
+    </div>
+
+    <!-- Center: Transcript -->
+    <div class="panel">
+      <h2>Live Transcript</h2>
+      <div class="transcript" id="transcript">
+        <p class="empty">No active calls yet. Connect to a live call to see updates.</p>
+      </div>
+    </div>
+
+    <!-- Right: Mock Phone -->
+    <div class="panel">
+      <div class="phone-title">WhatsApp Confirmation</div>
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="phone-header">
+            <div class="app">Churn-Rescue</div>
+            <div class="status" id="phone-status">waiting for acceptance...</div>
+          </div>
+          <div class="phone-messages" id="phone-messages">
+            <p class="phone-placeholder">When a customer accepts the discount, the generated WhatsApp message will appear here.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const needle = document.getElementById('needle');
+    const sentimentLabel = document.getElementById('sentiment-label');
+    const callIdEl = document.getElementById('call-id');
+    const customerNameEl = document.getElementById('customer-name');
+    const callStatusEl = document.getElementById('call-status');
+    const discountOfferEl = document.getElementById('discount-offer');
+    const acceptedEl = document.getElementById('accepted');
+    const transcriptEl = document.getElementById('transcript');
+    const radar = document.getElementById('radar');
+    const phoneMessages = document.getElementById('phone-messages');
+    const phoneStatus = document.getElementById('phone-status');
+
+    function clearEmpty(container) {
+      const empty = container.querySelector('.empty, .phone-placeholder');
+      if (empty) empty.remove();
+    }
+
+    function updateSentiment(score, label) {
+      // Map VADER compound score [-1, 1] to needle angle [-90, 90]
+      const angle = Math.max(-90, Math.min(90, score * 90));
+      needle.style.transform = `translateX(-50%) rotate(${angle}deg)`;
+      sentimentLabel.textContent = `${label} (${score.toFixed(2)})`;
+      sentimentLabel.className = 'sentiment-label ' + (label || 'neutral');
+
+      // Radar speed and color react to sentiment.
+      // Negative = fast red pulse, neutral = medium yellow, positive = slow green.
+      let speed, color;
+      if (label === 'negative') {
+        speed = '0.4s';
+        color = '#f44336';
+      } else if (label === 'positive') {
+        speed = '2.2s';
+        color = '#4caf50';
+      } else {
+        speed = '1.2s';
+        color = '#ffeb3b';
+      }
+      radar.style.setProperty('--radar-speed', speed);
+      radar.style.setProperty('--radar-color', color);
+    }
+
+    function addTurn(turn) {
+      clearEmpty(transcriptEl);
+      const div = document.createElement('div');
+      div.className = `turn ${turn.speaker}`;
+      div.innerHTML = `
+        <div class="speaker">${turn.speaker}</div>
+        <div class="text">${turn.text}</div>
+      `;
+      transcriptEl.appendChild(div);
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+
+    function addWhatsAppMessage(body, twilioConfigured) {
+      clearEmpty(phoneMessages);
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble';
+      const statusText = twilioConfigured ? 'Sent via Twilio' : 'Simulated (Twilio not configured)';
+      bubble.innerHTML = `
+        <div class="message-text">${body}</div>
+        <div class="message-meta">${statusText} · now</div>
+      `;
+      phoneMessages.appendChild(bubble);
+      phoneMessages.scrollTop = phoneMessages.scrollHeight;
+      phoneStatus.textContent = 'confirmation generated';
+    }
+
+    function connect() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+      ws.onopen = () => {
+        console.log('Connected to Churn-Rescue live feed');
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'whatsapp') {
+          addWhatsAppMessage(msg.body, msg.twilio_configured);
+          return;
+        }
+
+        if (msg.call_id) callIdEl.textContent = msg.call_id;
+        if (msg.customer_name) customerNameEl.textContent = msg.customer_name;
+        if (msg.status) callStatusEl.textContent = msg.status;
+
+        if (msg.offered_discount !== undefined && msg.offered_discount !== null) {
+          discountOfferEl.textContent = `${msg.offered_discount}%`;
+        }
+        if (msg.accepted) acceptedEl.textContent = msg.accepted;
+
+        if (msg.sentiment_score !== undefined) {
+          updateSentiment(msg.sentiment_score, msg.sentiment_label || 'neutral');
+        }
+
+        if (msg.turn) addTurn(msg.turn);
+
+        if (msg.type === 'call_completed') {
+          callStatusEl.textContent = msg.status + (msg.accepted === 'yes' ? ' ✅' : ' ❌');
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('Disconnected. Reconnecting in 3s...');
+        setTimeout(connect, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error', err);
+      };
+    }
+
+    connect();
+  </script>
+</body>
+</html>
