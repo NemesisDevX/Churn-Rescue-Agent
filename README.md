@@ -55,42 +55,79 @@ margin is protected unless the account is genuinely about to walk.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Op as Operator (Dashboard)
-    participant UI as Mission Control UI
-    participant SRV as server.py (ASGI)
-    participant FSM as RetentionAgent FSM
-    participant DB as SQLite CRM
-    participant BC as battlecards.json
-    participant OMNI as Stripe + WhatsApp (sim)
+    participant TRG as Churn Trigger<br/>(dashboard / webhook)
+    participant UI as Mission Control UI<br/>(vanilla JS)
+    participant WS as /ws telemetry<br/>(Starlette)
+    participant API as REST API<br/>/api/calls/*
+    participant CRM as SQLite CRM<br/>(customers, call_log)
+    participant FSM as RetentionAgent<br/>FSM engine
+    participant BC as battlecards.json<br/>(competitor intel)
+    participant STT as Web Speech STT<br/>(browser)
+    participant TTS as speechSynthesis<br/>(browser TTS)
+    participant SP as Stripe Checkout<br/>(simulated)
+    participant WA as WhatsApp webhook<br/>(simulated)
 
-    Op->>UI: "CALL NOW" on at-risk account
-    UI->>SRV: POST /api/calls/start {customer_id}
-    SRV->>DB: fetch account, mark in_call
-    SRV->>FSM: start_call()
-    FSM-->>UI: state_change IDLE→ENGAGE_LISTEN + greeting
-    UI->>Op: TTS speaks greeting
+    Note over TRG,WA: ── PHASE 1: TRIGGER & PROFILE LOOKUP ──
+    TRG->>API: POST /api/calls/start {customer_id}
+    API->>CRM: SELECT account (company, plan, mrr,<br/>churn_risk_score, ltv, competitor_threat)
+    CRM-->>API: Customer profile
+    API->>CRM: UPDATE status = 'in_call'
+    API->>FSM: RetentionAgent(customer)
+    Note right of FSM: authorize ceiling:<br/>min(25%, 10 + LTV/5k + risk×5)
+    API->>FSM: start_call()
+    FSM-->>WS: state_change: IDLE → ENGAGE_LISTEN
+    FSM-->>WS: transcript(agent): personalized greeting
+    WS-->>UI: broadcast events to all dashboards
+    UI->>TTS: speak(agent greeting)
+    TTS-->>TRG: agent voice: "What's driving the decision?"
 
-    loop negotiation (Web Speech STT or text fallback)
-        Op->>UI: customer speaks / types
-        UI->>SRV: WS {type:"utterance"}
-        SRV->>FSM: handle_utterance(text)
-        FSM-->>UI: sentiment score −1.0…+1.0
-        alt competitor named
-            FSM->>BC: fetch battlecard
-            FSM-->>UI: COUNTER_INTEL + rebuttal → ENGAGE_LISTEN
+    Note over TRG,WA: ── PHASE 2: LISTEN / COUNTER / AUTHORIZE LOOP ──
+    loop until accept, hard reject, or hangup
+        TRG->>STT: customer speaks objection
+        STT->>UI: interim + final transcript<br/>(fallback: typed input)
+        UI->>WS: {type:"utterance", text}
+        WS->>FSM: handle_utterance(text)
+        FSM->>FSM: lexicon sentiment → score −1.0…+1.0
+        FSM->>FSM: classify intent:<br/>competitor / cancel / price / accept / reject
+        FSM-->>WS: sentiment event → live needle
+        alt competitor named (Salesforce / HubSpot / Linear / Acme)
+            FSM->>FSM: ENGAGE_LISTEN → COUNTER_INTEL
+            FSM->>BC: lookup battlecard
+            BC-->>FSM: weakness, proof_points,<br/>pricing_angle, rebuttal
+            FSM-->>WS: battlecard event + rebuttal line
+            FSM->>FSM: COUNTER_INTEL → ENGAGE_LISTEN
         end
-        alt cancellation / price objection
-            FSM-->>UI: INCENTIVE_AUTH + offer (≤25% cap) → ENGAGE_LISTEN
+        alt cancel / price pressure (or warm accept, no offer)
+            FSM->>FSM: ENGAGE_LISTEN → INCENTIVE_AUTH
+            FSM->>FSM: next rung on offer ladder<br/>(60% → 80% → 100% of ceiling)
+            FSM-->>WS: offer {discount_pct, mrr_before, mrr_after}<br/>+ spoken offer
+            FSM->>FSM: INCENTIVE_AUTH → ENGAGE_LISTEN
+        else hard reject with live offer
+            FSM-->>WS: transcript(agent): polite close-out
+            FSM->>FSM: → IDLE, outcome = lost
+            FSM-->>WS: call_ended(lost)
         end
+        WS-->>UI: transcript bubbles + FSM node glow + sentiment
+        UI->>TTS: speak(agent lines)
     end
 
-    Op->>UI: "Fine, I'll take the deal"
-    UI->>SRV: WS {type:"utterance"}
-    SRV->>FSM: handle_utterance → OMNICHANNEL_CLOSE
-    FSM-->>UI: dispatch {stripe_checkout_url, whatsapp payload}
-    FSM-->>UI: IDLE + call_ended(saved)
-    SRV->>DB: write call_log, mark account saved
-    UI->>Op: WhatsApp card + Stripe link render live
+    Note over TRG,WA: ── PHASE 3: OMNICHANNEL CLOSE ──
+    TRG->>STT: "Fine, I'll take the deal"
+    STT->>UI: final transcript
+    UI->>WS: {type:"utterance"}
+    WS->>FSM: handle_utterance → accept intent + live offer
+    FSM->>FSM: ENGAGE_LISTEN → OMNICHANNEL_CLOSE
+    FSM->>SP: mint retention checkout URL<br/>cs_sim_retention_{acct}_{pct}
+    FSM->>WA: queue payload {to: phone,<br/>template: retention_offer_v1,<br/>body: offer + stripe link,<br/>message_id: wamid.simulated.*}
+    FSM-->>WS: dispatch {stripe_checkout_url, whatsapp}
+    FSM-->>WS: transcript(agent): confirmation read-out
+    FSM->>FSM: OMNICHANNEL_CLOSE → IDLE, outcome = saved
+    FSM-->>WS: call_ended(saved, discount_pct)
+    WS-->>UI: WhatsApp phone card + Stripe chip pop live
+    UI->>TTS: speak(confirmation)
+    WS->>CRM: INSERT call_log (outcome, discount,<br/>states_visited, transcript)
+    WS->>CRM: UPDATE status = 'saved'
+    WS-->>UI: customer_status event → roster badge flips to SAVED
 ```
 
 ## Quick start

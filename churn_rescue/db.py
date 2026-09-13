@@ -1,9 +1,4 @@
-"""SQLite data layer for the Churn-Rescue retention agent.
-
-Stores the enterprise account roster that the outbound agent dials, plus a
-call log that records every simulated retention call and its outcome.
-Stdlib `sqlite3` only -- no ORM, no external dependencies.
-"""
+"""SQLite store: account roster + call_log. Stdlib only, no ORM."""
 from __future__ import annotations
 
 import sqlite3
@@ -81,7 +76,7 @@ def _connect(db_path: str | Path) -> sqlite3.Connection:
 
 
 def init_db(db_path: str | Path = DEFAULT_DB_PATH) -> None:
-    """Create tables and indexes. Safe to call on every startup."""
+    """Idempotent schema init, called at startup and by the seeder."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:

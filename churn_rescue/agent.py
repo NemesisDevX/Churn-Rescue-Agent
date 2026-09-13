@@ -1,19 +1,8 @@
-"""Strategic Voice FSM engine for the Churn-Rescue retention agent.
+"""Retention call FSM. One instance = one call.
 
-The agent is an explicit finite state machine -- no hidden LLM magic -- so
-every transition can be audited, streamed to the dashboard, and covered by
-the headless test suite.
+IDLE -> ENGAGE_LISTEN -> COUNTER_INTEL -> INCENTIVE_AUTH -> OMNICHANNEL_CLOSE
 
-States
-------
-IDLE              Awaiting a call trigger.
-ENGAGE_LISTEN     Listening to the customer; classifies intent + sentiment.
-COUNTER_INTEL     A competitor was named; fires the matching battlecard rebuttal.
-INCENTIVE_AUTH    Computes the LTV-capped retention discount and voices the offer.
-OMNICHANNEL_CLOSE Offer accepted; dispatches the Stripe link + WhatsApp payload.
-
-Every public method returns a list of event dicts that the server forwards
-to the Mission Control dashboard over WebSocket.
+Public methods return event dicts; server.py broadcasts them over /ws.
 """
 from __future__ import annotations
 
@@ -39,9 +28,7 @@ class AgentState(str, Enum):
     OMNICHANNEL_CLOSE = "OMNICHANNEL_CLOSE"
 
 
-# ---------------------------------------------------------------------------
-# Sentiment lexicon (self-contained; no external NLP dependency)
-# ---------------------------------------------------------------------------
+# lexicon sentiment, no external NLP dep
 _POSITIVE = {
     "love", "like", "enjoy", "happy", "great", "good", "excellent", "amazing",
     "awesome", "satisfied", "perfect", "fine", "okay", "yes", "sure",
@@ -63,7 +50,7 @@ _INTENSIFIERS = {
 
 
 def score_sentiment(text: str) -> float:
-    """Lexicon sentiment in [-1.0, 1.0] with negation + intensifier handling."""
+    """[-1.0, 1.0]; handles negation + intensifiers."""
     tokens = re.findall(r"[a-zA-Z']+", text.lower())
     score, negate, boost = 0.0, 1.0, 1.0
     for tok in tokens:
@@ -90,9 +77,7 @@ def sentiment_label(score: float) -> str:
     return "neutral"
 
 
-# ---------------------------------------------------------------------------
-# Intent patterns
-# ---------------------------------------------------------------------------
+# intent patterns
 _CANCEL_RE = re.compile(
     r"\b(cancel|cancelling|canceling|leav(e|ing)|switch(ing)?|quit|"
     r"unsubscribe|moving to|walk(ing)? away|done with|end(ing)? (our|the|my) "
@@ -125,7 +110,7 @@ def _load_battlecards() -> dict[str, dict[str, Any]]:
 
 
 class RetentionAgent:
-    """One instance drives one retention call end-to-end."""
+    """Drives one retention call end-to-end."""
 
     def __init__(self, customer: Customer):
         self.customer = customer
@@ -143,29 +128,21 @@ class RetentionAgent:
         self.outcome: str | None = None
         self.dispatch: dict[str, Any] | None = None
 
-    # ------------------------------------------------------------------
-    # Incentive math
-    # ------------------------------------------------------------------
+    # incentive math
     def _authorize_discount(self) -> float:
-        """LTV-based authorization ceiling, hard-capped at 25%.
-
-        base 10% + up to +10% from LTV ($5k LTV per +1%) + up to +5%
-        from churn-risk urgency. A $148k-LTV, 0.92-risk account authorizes
-        ~24.6%; a $4k starter authorizes ~12%.
-        """
+        """10% base + LTV boost ($5k -> +1%, cap +10) + risk boost (cap +5),
+        hard-capped at 25%."""
         ltv_boost = min(10.0, max(0.0, self.customer.ltv) / 5000.0)
         risk_boost = min(5.0, max(0.0, self.customer.churn_risk_score) * 5.0)
         return round(min(MAX_DISCOUNT_PCT, 10.0 + ltv_boost + risk_boost), 1)
 
     def _build_offer_ladder(self) -> list[float]:
-        """Escalating offer rungs: open conservative, close at the ceiling."""
+        """Open conservative, close at the ceiling."""
         cap = self.authorized_discount
         ladder = sorted({round(cap * f, 1) for f in (0.6, 0.8, 1.0)})
         return [x for x in ladder if x > 0]
 
-    # ------------------------------------------------------------------
-    # Event helpers
-    # ------------------------------------------------------------------
+    # event helpers
     def _ev_state(self, old: AgentState) -> dict[str, Any]:
         self.transitions.append({"from": old.value, "to": self.state.value})
         return {"type": "state_change", "from": old.value, "to": self.state.value}
@@ -179,11 +156,8 @@ class RetentionAgent:
         self.transcript.append({"speaker": "agent", "text": text})
         return {"type": "transcript", "speaker": "agent", "text": text}
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
     def start_call(self) -> list[dict[str, Any]]:
-        """IDLE -> ENGAGE_LISTEN. Emits the greeting the TTS layer speaks."""
+        """IDLE -> ENGAGE_LISTEN; emits the greeting the TTS layer speaks."""
         events: list[dict[str, Any]] = []
         self.call_active = True
         self._goto(AgentState.ENGAGE_LISTEN, events)
@@ -197,7 +171,7 @@ class RetentionAgent:
         return events
 
     def handle_utterance(self, text: str) -> list[dict[str, Any]]:
-        """Process one customer utterance. Returns the emitted events."""
+        """One customer utterance in, events out."""
         events: list[dict[str, Any]] = []
         if not self.call_active:
             return events
@@ -222,11 +196,11 @@ class RetentionAgent:
         rejects = bool(_REJECT_RE.search(text))
         offer_active = self.current_offer is not None
 
-        # 1. Competitor intel takes priority -- arm the battlecard.
+        # competitor first -- arm the battlecard
         if competitor and competitor not in self.countered_competitors:
             self._counter_intel(competitor, events)
 
-        # 2. Final rejection while an offer is live ends the call.
+        # hard "no" while an offer is live kills the call
         if rejects and offer_active:
             events.append(self._ev_agent(
                 "Understood -- I'm sorry we couldn't change your mind today. "
@@ -237,24 +211,23 @@ class RetentionAgent:
             self._end_call("lost", events)
             return events
 
-        # 3. Acceptance with a live offer triggers the omnichannel close.
+        # yes + live offer -> close it
         if accepts and offer_active:
             self._omnichannel_close(events)
             return events
 
-        # 4. Cancellation / pricing pressure, or a warm accept with no offer
-        #    yet, routes to incentive authorization.
+        # cancel/price pressure, or a warm yes with no offer yet -> authorize
         if wants_cancel or price_objection or (accepts and not offer_active):
             self._incentive_auth(events)
             return events
 
-        # 5. Nothing actionable yet -- keep probing.
+        # nothing actionable -- probe
         if competitor:  # named but already countered
             events.append(self._ev_agent(
                 "Fair point. Beyond the platform comparison, what's the one "
                 "thing that would make staying an easy decision?"
             ))
-        elif accepts:  # unreachable (offer_active guard above), safety net
+        elif accepts:  # offer_active guard above makes this a safety net
             self._incentive_auth(events)
         else:
             events.append(self._ev_agent(self._probe_line()))
@@ -270,9 +243,7 @@ class RetentionAgent:
             "transcript": self.transcript,
         }
 
-    # ------------------------------------------------------------------
-    # State behaviors
-    # ------------------------------------------------------------------
+    # state behaviors
     def _counter_intel(self, key: str, events: list[dict[str, Any]]) -> None:
         self._goto(AgentState.COUNTER_INTEL, events)
         card = self.battlecards.get(key) or self.battlecards["_generic"]
@@ -362,9 +333,7 @@ class RetentionAgent:
             "discount_pct": self.current_offer,
         })
 
-    # ------------------------------------------------------------------
-    # Utterance classification
-    # ------------------------------------------------------------------
+    # utterance classification
     def _detect_competitor(self, text: str) -> str | None:
         lower = text.lower()
         for key in self.battlecards:

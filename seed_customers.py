@@ -1,8 +1,4 @@
-"""Seed the enterprise account roster.
-
-Run once before the demo:
-    python seed_customers.py
-"""
+"""Seed the account roster. Run once:  python seed_customers.py"""
 from churn_rescue.db import Customer, init_db, upsert_customer, DEFAULT_DB_PATH
 
 SEED_ACCOUNTS = [

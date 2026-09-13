@@ -1,11 +1,6 @@
-"""Mission Control server for the Churn-Rescue agent.
+"""ASGI server: dashboard + roster API + /ws telemetry channel.
 
-Pure-Python ASGI stack (Starlette + Uvicorn) -- no Node.js, no native
-extensions. Serves the dashboard, the customer roster API, and a WebSocket
-telemetry channel that streams FSM events in real time.
-
-    python -m churn_rescue.server
-    # then open http://127.0.0.1:8000
+    python -m churn_rescue.server   ->  http://127.0.0.1:8000
 """
 from __future__ import annotations
 
@@ -37,26 +32,30 @@ logger = logging.getLogger("churn_rescue.server")
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-# One active call at a time keeps the demo state unambiguous.
+# one call at a time keeps demo state unambiguous
 active_agent: RetentionAgent | None = None
 _ws_clients: set[WebSocket] = set()
 
 
 async def broadcast(event: dict[str, Any]) -> None:
-    """Push one telemetry event to every connected dashboard."""
-    dead: list[WebSocket] = []
+    """Fan out to all dashboards; a stalled socket must not starve the rest."""
     payload = json.dumps(event)
-    for ws in _ws_clients:
+    clients = list(_ws_clients)
+
+    async def _send(ws: WebSocket) -> WebSocket | None:
         try:
-            await ws.send_text(payload)
+            await asyncio.wait_for(ws.send_text(payload), timeout=2.0)
+            return None
         except Exception:
-            dead.append(ws)
-    for ws in dead:
-        _ws_clients.discard(ws)
+            return ws
+
+    for ws in await asyncio.gather(*(_send(ws) for ws in clients)):
+        if ws is not None:
+            _ws_clients.discard(ws)
 
 
 async def emit(events: list[dict[str, Any]]) -> None:
-    """Broadcast a batch of FSM events and persist the call on termination."""
+    """Broadcast FSM events; persist call_log row when the call ends."""
     for event in events:
         await broadcast(event)
         if event["type"] == "call_ended" and active_agent is not None:
@@ -80,9 +79,7 @@ async def emit(events: list[dict[str, Any]]) -> None:
             })
 
 
-# ---------------------------------------------------------------------------
 # REST API
-# ---------------------------------------------------------------------------
 async def api_customers(request) -> JSONResponse:
     customers = [vars(c) for c in list_customers(DEFAULT_DB_PATH)]
     return JSONResponse({"customers": customers})
@@ -112,7 +109,7 @@ async def api_start_call(request) -> JSONResponse:
 
 
 async def api_utterance(request) -> JSONResponse:
-    """Text fallback for clients without the Web Speech API."""
+    """Text fallback when Web Speech API is unavailable."""
     if active_agent is None or not active_agent.call_active:
         return JSONResponse({"error": "no active call"}, status_code=409)
     body = await request.json()
@@ -135,9 +132,7 @@ async def dashboard(request) -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
-# ---------------------------------------------------------------------------
-# WebSocket telemetry channel
-# ---------------------------------------------------------------------------
+# ws telemetry
 async def ws_telemetry(websocket: WebSocket) -> None:
     global active_agent
     await websocket.accept()

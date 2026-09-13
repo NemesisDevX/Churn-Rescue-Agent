@@ -1,12 +1,4 @@
-"""Headless simulation of a full angry-customer retention call.
-
-Drives the FSM through every state and asserts 100% transition coverage:
-
-    IDLE -> ENGAGE_LISTEN -> COUNTER_INTEL -> ENGAGE_LISTEN
-         -> INCENTIVE_AUTH -> ENGAGE_LISTEN (x3, escalating offers)
-         -> OMNICHANNEL_CLOSE -> IDLE          (saved)
-
-    plus a second scenario covering the terminal "lost" path.
+"""Headless full-call sim: asserts 100% FSM state + transition coverage.
 
 Run:  python -m unittest tests.test_fsm_flow -v
 """
@@ -48,7 +40,7 @@ def events_of(events: list[dict], etype: str) -> list[dict]:
 
 
 class TestAngryCustomerFlow(unittest.TestCase):
-    """Full simulated negotiation: fury -> battlecards -> escalation -> save."""
+    """fury -> battlecards -> escalation -> save."""
 
     def setUp(self) -> None:
         self.agent = RetentionAgent(make_customer())
@@ -56,7 +48,7 @@ class TestAngryCustomerFlow(unittest.TestCase):
     def test_full_save_flow(self) -> None:
         agent = self.agent
 
-        # --- IDLE -> ENGAGE_LISTEN, greeting emitted -------------------------
+        # IDLE -> ENGAGE_LISTEN, greeting emitted
         events = agent.start_call()
         self.assertEqual(agent.state, AgentState.ENGAGE_LISTEN)
         self.assertTrue(agent.call_active)
@@ -64,8 +56,7 @@ class TestAngryCustomerFlow(unittest.TestCase):
         self.assertEqual(greeting["speaker"], "agent")
         self.assertIn("Northwind Traders", greeting["text"])
 
-        # --- Utterance 1: rage + competitor + price in one breath ------------
-        # Expect: COUNTER_INTEL (Salesforce battlecard) -> INCENTIVE_AUTH -> listen
+        # utt 1: rage + competitor + price -> COUNTER_INTEL -> INCENTIVE_AUTH
         events = agent.handle_utterance(
             "I'm furious. We're canceling and moving to Salesforce - "
             "your pricing is a joke and the product is slow."
@@ -86,7 +77,7 @@ class TestAngryCustomerFlow(unittest.TestCase):
         sent = events_of(events, "sentiment")[0]
         self.assertLess(sent["score"], 0.0, "angry utterance must score negative")
 
-        # --- Utterance 2: rejects first offer, demands more ------------------
+        # utt 2: lowball rejection -> escalate
         events = agent.handle_utterance(
             "That's not enough. It's still too expensive."
         )
@@ -94,7 +85,7 @@ class TestAngryCustomerFlow(unittest.TestCase):
         self.assertGreater(offer2["discount_pct"], offer1["discount_pct"])
         self.assertEqual(agent.state, AgentState.ENGAGE_LISTEN)
 
-        # --- Utterance 3: second competitor + final push to the cap ----------
+        # utt 3: second competitor + push to the cap
         events = agent.handle_utterance(
             "HubSpot quoted us way cheaper. You need to do better than that."
         )
@@ -104,7 +95,7 @@ class TestAngryCustomerFlow(unittest.TestCase):
         self.assertEqual(offer3["discount_pct"], offer3["authorized_max"])
         self.assertLessEqual(offer3["authorized_max"], MAX_DISCOUNT_PCT)
 
-        # --- Utterance 4: accepts -> OMNICHANNEL_CLOSE -> IDLE ---------------
+        # utt 4: accepts -> OMNICHANNEL_CLOSE -> IDLE
         events = agent.handle_utterance("Fine, I'll take the deal.")
         visited = [e["to"] for e in events_of(events, "state_change")]
         self.assertIn("OMNICHANNEL_CLOSE", visited)
@@ -122,7 +113,7 @@ class TestAngryCustomerFlow(unittest.TestCase):
         ended = events_of(events, "call_ended")[0]
         self.assertEqual(ended["outcome"], "saved")
 
-        # --- 100% FSM coverage ----------------------------------------------
+        # 100% FSM coverage
         seen = states_seen(agent)
         expected = {s.value for s in AgentState}
         self.assertEqual(seen, expected, f"missing states: {expected - seen}")
