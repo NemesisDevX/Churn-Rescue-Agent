@@ -6,213 +6,282 @@
 <title>CHURN-RESCUE // Mission Control</title>
 <style>
   :root {
-    --bg: #0a0e14;
-    --panel: #111722;
-    --panel-2: #161e2b;
-    --border: #232f42;
-    --text: #dbe4f0;
-    --dim: #7a8aa0;
-    --accent: #22d3ee;
-    --accent-2: #a78bfa;
-    --green: #34d399;
-    --amber: #fbbf24;
-    --red: #f87171;
-    --glow-cyan: 0 0 12px rgba(34,211,238,.55), 0 0 32px rgba(34,211,238,.18);
+    --bg: #09090b;
+    --glass: rgba(24,24,27,.72);
+    --glass-2: rgba(39,39,42,.55);
+    --edge: rgba(255,255,255,.07);
+    --edge-hi: rgba(255,255,255,.14);
+    --text: #e4e4e7;
+    --dim: #71717a;
+    --emerald: #10b981;
+    --emerald-hi: #34d399;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --cyan: #22d3ee;
+    --violet: #818cf8;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: var(--bg);
+    background:
+      radial-gradient(1100px 500px at 80% -10%, rgba(16,185,129,.08), transparent 60%),
+      radial-gradient(900px 500px at 10% 110%, rgba(129,140,248,.07), transparent 60%),
+      var(--bg);
     color: var(--text);
-    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
     min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+    display: flex; flex-direction: column;
   }
-  /* header */
+
+  /* header ticker */
   header {
-    display: flex; align-items: center; gap: 14px;
-    padding: 12px 22px;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, #0d1420, #0a0e14);
+    display: flex; align-items: stretch; gap: 0;
+    border-bottom: 1px solid var(--edge);
+    background: rgba(9,9,11,.8);
+    backdrop-filter: blur(14px);
   }
-  .logo { font-weight: 800; letter-spacing: .14em; font-size: 15px; }
-  .logo span { color: var(--accent); }
-  .hdr-sub { color: var(--dim); font-size: 12px; letter-spacing: .08em; }
-  .conn { margin-left: auto; display: flex; align-items: center; gap: 8px;
-          font-size: 11px; color: var(--dim); letter-spacing: .1em; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
-  .dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .brand {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 14px 22px; border-right: 1px solid var(--edge);
+  }
+  .brand .logo { font-weight: 800; letter-spacing: .16em; font-size: 14px; }
+  .brand .logo em { color: var(--emerald); font-style: normal; }
+  .brand .sub { font-size: 9.5px; color: var(--dim); letter-spacing: .18em; margin-top: 3px; }
+  .ticker { display: flex; flex: 1; }
+  .metric {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    padding: 10px 20px; border-right: 1px solid var(--edge);
+  }
+  .metric .k { font-size: 9.5px; letter-spacing: .22em; color: var(--dim); font-weight: 600; }
+  .metric .v { font-size: 21px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .metric .v.em { color: var(--emerald-hi); text-shadow: 0 0 18px rgba(16,185,129,.35); }
+  .metric .v small { font-size: 11px; color: var(--dim); font-weight: 500; letter-spacing: .05em; }
+  .conn { display: flex; align-items: center; gap: 8px; padding: 0 20px;
+          font-size: 10px; color: var(--dim); letter-spacing: .14em; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+  .dot.on { background: var(--emerald); box-shadow: 0 0 10px var(--emerald); }
 
   /* layout */
   main {
     flex: 1; display: grid;
-    grid-template-columns: 330px 1fr 340px;
-    gap: 14px; padding: 14px 22px 20px;
-    min-height: 0;
+    grid-template-columns: 320px 1fr 360px;
+    gap: 14px; padding: 14px 18px 16px; min-height: 0;
   }
   .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    background: var(--glass);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    backdrop-filter: blur(16px);
     display: flex; flex-direction: column;
     overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,.35);
   }
   .panel h2 {
-    font-size: 11px; letter-spacing: .18em; color: var(--dim);
-    padding: 12px 14px 10px; border-bottom: 1px solid var(--border);
+    font-size: 10px; letter-spacing: .2em; color: var(--dim);
+    padding: 13px 15px 11px; border-bottom: 1px solid var(--edge);
     text-transform: uppercase; font-weight: 700;
     display: flex; align-items: center; gap: 8px;
   }
-  .panel h2::before { content: ""; width: 6px; height: 6px; border-radius: 1px;
-    background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .panel h2::before { content: ""; width: 6px; height: 6px; border-radius: 2px;
+    background: var(--emerald); box-shadow: 0 0 8px var(--emerald); }
 
   /* roster */
-  #roster { overflow-y: auto; }
+  #roster { overflow-y: auto; flex: 1; }
   .cust {
-    padding: 11px 14px; border-bottom: 1px solid var(--border);
+    padding: 12px 14px; border-bottom: 1px solid var(--edge);
     display: grid; grid-template-columns: 1fr auto; gap: 4px 10px;
     transition: background .15s;
   }
-  .cust:hover { background: var(--panel-2); }
-  .cust.active { background: #14202e; border-left: 3px solid var(--accent); }
-  .cust .name { font-weight: 600; font-size: 13.5px; }
-  .cust .meta { font-size: 11px; color: var(--dim); grid-column: 1 / -1; }
-  .risk { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px;
-          align-self: start; }
-  .risk.hi  { color: var(--red);   background: rgba(248,113,113,.12); }
-  .risk.med { color: var(--amber); background: rgba(251,191,36,.12); }
-  .risk.lo  { color: var(--green); background: rgba(52,211,153,.12); }
+  .cust:hover { background: var(--glass-2); }
+  .cust.active { background: rgba(16,185,129,.07); border-left: 2px solid var(--emerald); }
+  .cust .name { font-weight: 600; font-size: 13px; }
+  .cust .meta { font-size: 10.5px; color: var(--dim); grid-column: 1 / -1; line-height: 1.5; }
+  .risk { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 5px;
+          align-self: start; letter-spacing: .05em; }
+  .risk.hi  { color: var(--red);   background: rgba(239,68,68,.13);  border: 1px solid rgba(239,68,68,.25); }
+  .risk.med { color: var(--amber); background: rgba(245,158,11,.13); border: 1px solid rgba(245,158,11,.25); }
+  .risk.lo  { color: var(--emerald-hi); background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.25); }
   .callbtn {
-    grid-column: 1 / -1; margin-top: 6px;
-    background: transparent; color: var(--accent);
-    border: 1px solid var(--accent); border-radius: 6px;
-    font-size: 11px; letter-spacing: .1em; padding: 6px 0;
-    cursor: pointer; font-weight: 700; transition: all .15s;
+    grid-column: 1 / -1; margin-top: 7px;
+    background: transparent; color: var(--emerald-hi);
+    border: 1px solid rgba(16,185,129,.45); border-radius: 7px;
+    font-size: 10.5px; letter-spacing: .12em; padding: 7px 0;
+    cursor: pointer; font-weight: 700; transition: all .18s;
   }
-  .callbtn:hover:not(:disabled) { background: var(--accent); color: #04121a;
-    box-shadow: var(--glow-cyan); }
-  .callbtn:disabled { opacity: .35; cursor: not-allowed; }
-  .stag { font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px;
-          letter-spacing: .06em; text-transform: uppercase; }
-  .stag.saved   { background: rgba(52,211,153,.15);  color: var(--green); }
-  .stag.churned { background: rgba(248,113,113,.15); color: var(--red); }
-  .stag.in_call { background: rgba(34,211,238,.15);  color: var(--accent); }
+  .callbtn:hover:not(:disabled) { background: var(--emerald); color: #03130c;
+    box-shadow: 0 0 18px rgba(16,185,129,.4); }
+  .callbtn:disabled { opacity: .3; cursor: not-allowed; }
+  .stag { font-size: 9px; padding: 2px 6px; border-radius: 4px; margin-left: 7px;
+          letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+  .stag.saved   { background: rgba(16,185,129,.15);  color: var(--emerald-hi); }
+  .stag.churned { background: rgba(239,68,68,.15);   color: var(--red); }
+  .stag.in_call { background: rgba(34,211,238,.15);  color: var(--cyan); }
+  .stag.at_risk { background: rgba(245,158,11,.13);  color: var(--amber); }
 
   /* phone terminal */
-  #terminal { display: flex; flex-direction: column; }
   #transcript {
-    flex: 1; overflow-y: auto; padding: 16px;
-    display: flex; flex-direction: column; gap: 10px;
+    flex: 1; overflow-y: auto; padding: 18px;
+    display: flex; flex-direction: column; gap: 11px;
   }
-  .msg { max-width: 78%; padding: 9px 13px; border-radius: 12px;
-         font-size: 13.5px; line-height: 1.45; animation: pop .25s ease; }
-  @keyframes pop { from { opacity: 0; transform: translateY(6px);} }
-  .msg.agent { align-self: flex-start; background: #1b2636;
-    border: 1px solid #2a3a52; border-bottom-left-radius: 3px; }
-  .msg.customer { align-self: flex-end; background: #143a2e;
-    border: 1px solid #1f5442; border-bottom-right-radius: 3px; }
-  .msg .who { display: block; font-size: 9.5px; letter-spacing: .14em;
-    color: var(--dim); margin-bottom: 3px; text-transform: uppercase; }
-  .sys-note { align-self: center; font-size: 11px; color: var(--dim);
-    font-style: italic; }
-  #wavewrap { border-top: 1px solid var(--border); padding: 8px 14px 4px; }
-  #wave { width: 100%; height: 52px; display: block; }
-  #controls { display: flex; gap: 10px; padding: 10px 14px 14px; align-items: center; }
+  .msg { max-width: 76%; padding: 10px 14px; border-radius: 14px;
+         font-size: 13px; line-height: 1.5; animation: pop .25s ease; }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98);} }
+  .msg.agent { align-self: flex-start; background: rgba(39,39,42,.85);
+    border: 1px solid var(--edge-hi); border-bottom-left-radius: 4px; }
+  .msg.customer { align-self: flex-end; background: rgba(6,78,59,.55);
+    border: 1px solid rgba(16,185,129,.3); border-bottom-right-radius: 4px; }
+  .msg .who { display: block; font-size: 9px; letter-spacing: .16em;
+    color: var(--dim); margin-bottom: 4px; text-transform: uppercase; font-weight: 700; }
+  .sys-note { align-self: center; font-size: 10.5px; color: var(--dim);
+    font-style: italic; text-align: center; max-width: 80%; }
+  #eqwrap { border-top: 1px solid var(--edge); padding: 10px 16px 6px;
+    background: rgba(9,9,11,.4); }
+  #eq { width: 100%; height: 64px; display: block; }
+  #controls { display: flex; gap: 10px; padding: 10px 16px 16px; align-items: center; }
   #micbtn {
-    width: 52px; height: 52px; border-radius: 50%;
-    border: 2px solid var(--accent); background: transparent;
-    color: var(--accent); font-size: 20px; cursor: pointer;
-    transition: all .15s; flex-shrink: 0;
+    width: 50px; height: 50px; border-radius: 50%;
+    border: 1.5px solid rgba(16,185,129,.5); background: rgba(16,185,129,.06);
+    color: var(--emerald-hi); font-size: 19px; cursor: pointer;
+    transition: all .18s; flex-shrink: 0;
   }
-  #micbtn:hover:not(:disabled) { background: rgba(34,211,238,.12); box-shadow: var(--glow-cyan); }
+  #micbtn:hover:not(:disabled) { background: rgba(16,185,129,.18); box-shadow: 0 0 16px rgba(16,185,129,.4); }
   #micbtn.live { background: var(--red); border-color: var(--red); color: #fff;
     animation: pulse 1.2s infinite; }
-  @keyframes pulse { 50% { box-shadow: 0 0 18px rgba(248,113,113,.7);} }
-  #micbtn:disabled { opacity: .35; cursor: not-allowed; }
-  #txtin { flex: 1; background: var(--panel-2); border: 1px solid var(--border);
-    border-radius: 8px; color: var(--text); padding: 12px 14px; font-size: 13px;
-    outline: none; }
-  #txtin:focus { border-color: var(--accent); }
+  @keyframes pulse { 50% { box-shadow: 0 0 22px rgba(239,68,68,.65);} }
+  #micbtn:disabled { opacity: .3; cursor: not-allowed; }
+  #txtin { flex: 1; background: rgba(9,9,11,.6); border: 1px solid var(--edge);
+    border-radius: 9px; color: var(--text); padding: 13px 15px; font-size: 13px;
+    outline: none; transition: border-color .15s; }
+  #txtin:focus { border-color: rgba(16,185,129,.5); }
   #sendbtn, #endbtn {
-    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
-    border-radius: 8px; padding: 12px 16px; font-size: 12px; cursor: pointer;
-    letter-spacing: .06em; font-weight: 600;
+    border: 1px solid var(--edge); background: var(--glass-2); color: var(--text);
+    border-radius: 9px; padding: 13px 17px; font-size: 11px; cursor: pointer;
+    letter-spacing: .08em; font-weight: 700;
   }
-  #sendbtn:hover { border-color: var(--accent); color: var(--accent); }
-  #endbtn { color: var(--red); border-color: rgba(248,113,113,.4); }
-  #endbtn:hover { background: rgba(248,113,113,.1); }
-  #interim { padding: 0 16px 8px; font-size: 12px; color: var(--dim);
-    font-style: italic; min-height: 18px; }
+  #sendbtn:hover { border-color: var(--emerald); color: var(--emerald-hi); }
+  #endbtn { color: var(--red); border-color: rgba(239,68,68,.35); }
+  #endbtn:hover { background: rgba(239,68,68,.1); }
+  #interim { padding: 0 18px 8px; font-size: 11.5px; color: var(--dim);
+    font-style: italic; min-height: 16px; }
 
-  /* telemetry */
-  #fsm { padding: 14px; }
+  /* fsm telemetry */
+  #fsm { padding: 14px 15px; }
   .node {
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 9px 12px; font-size: 12px; font-weight: 700; letter-spacing: .1em;
-    color: var(--dim); background: var(--panel-2);
-    transition: all .25s; position: relative;
+    border: 1px solid var(--edge); border-radius: 9px;
+    padding: 8px 12px; font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    color: var(--dim); background: rgba(9,9,11,.5);
+    transition: all .3s;
   }
   .node small { display: block; font-weight: 400; letter-spacing: 0;
-    color: var(--dim); font-size: 10.5px; margin-top: 2px; }
-  .node.visited { color: var(--text); border-color: #3a4d68; }
+    color: var(--dim); font-size: 9.5px; margin-top: 1px; }
+  .node.visited { color: var(--text); border-color: var(--edge-hi); }
   .node.on {
-    color: #051018; background: var(--accent); border-color: var(--accent);
-    box-shadow: var(--glow-cyan);
+    color: #04150e; background: var(--emerald); border-color: var(--emerald);
+    box-shadow: 0 0 20px rgba(16,185,129,.5);
   }
-  .node.on small { color: #0a2530; }
-  .link { width: 2px; height: 12px; background: var(--border); margin-left: 20px; }
-  .link.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .node.on small { color: #0a3a28; }
+  .link { width: 2px; height: 10px; background: var(--edge-hi); margin-left: 18px; }
+  .link.on { background: var(--emerald); box-shadow: 0 0 8px var(--emerald); }
 
-  #sentwrap { padding: 14px; }
-  #sentbar { height: 14px; border-radius: 7px; position: relative;
-    background: linear-gradient(90deg, var(--red), var(--amber) 50%, var(--green));
-    overflow: visible; }
-  #needle { position: absolute; top: -5px; width: 4px; height: 24px;
+  #sentwrap { padding: 12px 15px 14px; }
+  #sentbar { height: 10px; border-radius: 5px; position: relative;
+    background: linear-gradient(90deg, var(--red), var(--amber) 50%, var(--emerald)); }
+  #needle { position: absolute; top: -5px; width: 4px; height: 20px;
     background: #fff; border-radius: 2px; left: 50%;
-    box-shadow: 0 0 8px rgba(255,255,255,.8); transition: left .4s ease; }
-  #sentlbl { display: flex; justify-content: space-between; margin-top: 8px;
-    font-size: 10.5px; color: var(--dim); letter-spacing: .1em; }
-  #sentval { text-align: center; font-size: 22px; font-weight: 800; margin-top: 8px;
+    box-shadow: 0 0 10px rgba(255,255,255,.9); transition: left .4s ease; }
+  #sentlbl { display: flex; justify-content: space-between; margin-top: 7px;
+    font-size: 9px; color: var(--dim); letter-spacing: .14em; }
+  #sentval { text-align: center; font-size: 20px; font-weight: 800; margin-top: 6px;
     font-variant-numeric: tabular-nums; }
-  .offer-chip { margin: 0 14px 12px; padding: 10px 12px; border-radius: 8px;
-    border: 1px dashed var(--amber); color: var(--amber); font-size: 12px;
-    display: none; }
+  .offer-chip { margin: 0 15px 14px; padding: 10px 13px; border-radius: 9px;
+    border: 1px dashed rgba(245,158,11,.5); color: var(--amber); font-size: 11px;
+    display: none; background: rgba(245,158,11,.05); }
   .offer-chip.show { display: block; animation: pop .3s ease; }
-  .offer-chip b { font-size: 16px; }
+  .offer-chip b { font-size: 15px; }
 
-  /* dispatch */
-  #dispatch { padding: 14px; }
-  #dispatch .empty { color: var(--dim); font-size: 12px; font-style: italic; }
-  .wacard {
-    background: #0b141a; border: 1px solid #1f3a2e; border-radius: 10px;
-    overflow: hidden; animation: pop .35s ease;
+  /* hardware phone mockup */
+  #phonecol { display: flex; flex-direction: column; flex: 1;
+    align-items: center; justify-content: center; padding: 16px; }
+  .iphone {
+    width: 250px; height: 512px; border-radius: 42px; position: relative;
+    background: #0b0b0d;
+    border: 3px solid #3f3f46;
+    box-shadow: 0 0 0 2px #18181b, 0 24px 60px rgba(0,0,0,.6),
+      inset 0 0 6px rgba(0,0,0,.8);
   }
-  .wacard .wa-head { background: #1f2c34; padding: 8px 12px; font-size: 11.5px;
-    color: #8696a0; display: flex; align-items: center; gap: 8px; }
-  .wacard .wa-head .wa-ic { color: #25d366; font-size: 15px; }
-  .wacard .wa-body { padding: 12px; }
-  .wa-bubble { background: #005c4b; border-radius: 8px; padding: 10px 12px;
-    font-size: 12.5px; line-height: 1.5; color: #e9edef; }
-  .wa-bubble a { color: #53bdeb; word-break: break-all; }
-  .wa-meta { text-align: right; font-size: 10px; color: #8696a0; margin-top: 4px; }
-  .stripe-chip { margin-top: 10px; border: 1px solid #635bff; border-radius: 8px;
-    padding: 9px 12px; font-size: 11.5px; color: #a5a0ff;
-    background: rgba(99,91,255,.08); word-break: break-all; }
-  .stripe-chip b { color: #d6d2ff; }
+  .iphone .island {
+    position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+    width: 84px; height: 24px; border-radius: 14px; background: #000;
+    z-index: 3;
+  }
+  .iphone .screen {
+    position: absolute; inset: 7px; border-radius: 36px; overflow: hidden;
+    background: #0a0f0d; transition: background .6s;
+    display: flex; flex-direction: column;
+  }
+  .iphone .screen.lit { background: linear-gradient(180deg, #10231c, #0a0f0d 65%); }
+  .statusbar { display: flex; justify-content: space-between; padding: 16px 20px 0;
+    font-size: 10px; color: #d4d4d8; }
+  .lockclock { text-align: center; margin-top: 26px; color: #e4e4e7; opacity: .35;
+    transition: opacity .4s; }
+  .screen.lit .lockclock { opacity: .9; }
+  .lockclock .t { font-size: 38px; font-weight: 200; letter-spacing: -1px; }
+  .lockclock .d { font-size: 10px; color: #a1a1aa; margin-top: 2px; }
+  .wa-notif {
+    margin: 18px 12px 0; background: rgba(31,41,55,.92);
+    backdrop-filter: blur(10px); border-radius: 18px; padding: 11px 12px;
+    border: 1px solid rgba(255,255,255,.08);
+    transform: translateY(-14px); opacity: 0;
+    transition: all .5s cubic-bezier(.2,.9,.3,1.2);
+  }
+  .screen.lit .wa-notif { transform: translateY(0); opacity: 1; }
+  .wa-notif .nhead { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+  .wa-notif .waicon { width: 18px; height: 18px; border-radius: 5px; background: #25d366;
+    display: flex; align-items: center; justify-content: center; font-size: 11px;
+    color: #fff; font-weight: 800; }
+  .wa-notif .app { font-size: 10px; color: #9ca3af; letter-spacing: .06em; }
+  .wa-notif .ts { margin-left: auto; font-size: 9px; color: #6b7280; }
+  .wa-notif .from { font-size: 12px; font-weight: 700; color: #f9fafb; }
+  .wa-notif .body { font-size: 10.5px; color: #d1d5db; line-height: 1.45;
+    margin-top: 3px; }
+  .wa-notif .body a { color: #53bdeb; word-break: break-all; }
+  .stripe-cta {
+    display: block; margin-top: 10px; text-align: center; text-decoration: none;
+    background: linear-gradient(90deg, #635bff, #8f88ff); color: #fff;
+    border-radius: 10px; padding: 9px 8px; font-size: 10.5px; font-weight: 700;
+    letter-spacing: .04em; cursor: pointer;
+    box-shadow: 0 0 14px rgba(99,91,255,.55);
+    animation: ctaglow 1.6s ease-in-out infinite;
+  }
+  @keyframes ctaglow {
+    50% { box-shadow: 0 0 26px rgba(99,91,255,.9); transform: scale(1.02); }
+  }
+  .iphone .homebar { position: absolute; bottom: 8px; left: 50%;
+    transform: translateX(-50%); width: 90px; height: 4px;
+    border-radius: 2px; background: #52525b; z-index: 3; }
+  #phonestatus { font-size: 9.5px; color: var(--dim); letter-spacing: .16em;
+    margin-top: 14px; text-transform: uppercase; }
 
-  footer { padding: 8px 22px; border-top: 1px solid var(--border);
-    font-size: 10.5px; color: var(--dim); letter-spacing: .08em;
-    display: flex; justify-content: space-between; }
+  footer { padding: 9px 20px; border-top: 1px solid var(--edge);
+    font-size: 9.5px; color: var(--dim); letter-spacing: .1em;
+    display: flex; justify-content: space-between;
+    background: rgba(9,9,11,.6); }
 
-  ::-webkit-scrollbar { width: 8px; }
-  ::-webkit-scrollbar-thumb { background: #26334a; border-radius: 4px; }
+  ::-webkit-scrollbar { width: 7px; }
+  ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">CHURN<span>-</span>RESCUE</div>
-  <div class="hdr-sub">AUTONOMOUS OUTBOUND RETENTION AGENT // MISSION CONTROL</div>
+  <div class="brand">
+    <div class="logo">CHURN<em>-</em>RESCUE</div>
+    <div class="sub">MISSION CONTROL</div>
+  </div>
+  <div class="ticker">
+    <div class="metric"><div class="k">ARR PROTECTED</div><div class="v em" id="mArr">$487,000</div></div>
+    <div class="metric"><div class="k">RETENTION WIN-RATE</div><div class="v">91.2<small>%</small></div></div>
+    <div class="metric"><div class="k">ACTIVE PIPELINE</div><div class="v">10<small> ENTERPRISE ACCOUNTS</small></div></div>
+  </div>
   <div class="conn"><div class="dot" id="wsdot"></div><span id="wslbl">LINK DOWN</span></div>
 </header>
 
@@ -224,13 +293,13 @@
   </section>
 
   <!-- phone terminal -->
-  <section class="panel" id="terminal">
-    <h2>Phone Terminal <span id="callstatus" style="margin-left:auto;color:var(--dim)"></span></h2>
+  <section class="panel">
+    <h2>Voice Terminal <span id="callstatus" style="margin-left:auto;color:var(--emerald-hi)"></span></h2>
     <div id="transcript">
       <div class="sys-note">Select an account and press CALL NOW to arm the agent.</div>
     </div>
     <div id="interim"></div>
-    <div id="wavewrap"><canvas id="wave"></canvas></div>
+    <div id="eqwrap"><canvas id="eq"></canvas></div>
     <div id="controls">
       <button id="micbtn" title="Push to talk" disabled>&#127908;</button>
       <input id="txtin" placeholder="Type as the customer... (fallback for speech recognition)" disabled>
@@ -239,7 +308,7 @@
     </div>
   </section>
 
-  <!-- telemetry -->
+  <!-- telemetry + hardware phone -->
   <div style="display:flex;flex-direction:column;gap:14px;min-height:0;">
     <section class="panel">
       <h2>Live Call Telemetry</h2>
@@ -253,15 +322,35 @@
     </section>
 
     <section class="panel" style="flex:1;">
-      <h2>Omnichannel Dispatch</h2>
-      <div id="dispatch"><div class="empty">Awaiting a closed offer. Stripe + WhatsApp payloads will appear here.</div></div>
+      <h2>Customer Device</h2>
+      <div id="phonecol">
+        <div class="iphone">
+          <div class="island"></div>
+          <div class="screen" id="phonescreen">
+            <div class="statusbar"><span id="phonetime">9:41</span><span>&#128246; &#128267;</span></div>
+            <div class="lockclock"><div class="t" id="locktime">9:41</div><div class="d">Sunday, September 13</div></div>
+            <div class="wa-notif" id="wanotif">
+              <div class="nhead">
+                <div class="waicon">&#9993;</div>
+                <div class="app">WHATSAPP</div>
+                <div class="ts" id="wats">now</div>
+              </div>
+              <div class="from">ChurnRescue Bot</div>
+              <div class="body" id="wabody"></div>
+              <a class="stripe-cta" id="stripebtn" target="_blank">Review &amp; Lock Discount (Stripe)</a>
+            </div>
+          </div>
+          <div class="homebar"></div>
+        </div>
+        <div id="phonestatus">device idle</div>
+      </div>
     </section>
   </div>
 </main>
 
 <footer>
   <span>FSM: IDLE &rarr; ENGAGE_LISTEN &rarr; COUNTER_INTEL &rarr; INCENTIVE_AUTH &rarr; OMNICHANNEL_CLOSE</span>
-  <span>call-e hackathon build // pure python + vanilla js</span>
+  <span>call-e hackathon // pure python + vanilla js</span>
 </footer>
 
 <script>
@@ -279,8 +368,8 @@ const FSM_STATES = [
 let ws = null, wsOpen = false;
 let callActive = false, currentCustomer = null;
 let recognition = null, listening = false;
-let ttsOn = true;
 const visitedStates = new Set();
+let arrProtected = 487000;
 
 /* ws */
 function connect() {
@@ -375,7 +464,7 @@ function handleEvent(ev) {
 }
 
 function onStateChange(state) {
-  callActive = state !== "IDLE" || [...visitedStates].length === 0;
+  callActive = state !== "IDLE" || visitedStates.size === 0;
   visitedStates.add(state);
   document.querySelectorAll(".node").forEach(n => {
     const s = n.dataset.state;
@@ -394,7 +483,7 @@ function onSentiment(score) {
   $("needle").style.left = `calc(${pct}% - 2px)`;
   const el = $("sentval");
   el.textContent = score.toFixed(2);
-  el.style.color = score >= 0.15 ? "var(--green)" : score <= -0.15 ? "var(--red)" : "var(--amber)";
+  el.style.color = score >= 0.15 ? "var(--emerald-hi)" : score <= -0.15 ? "var(--red)" : "var(--amber)";
 }
 
 function onBattlecard(ev) {
@@ -410,28 +499,37 @@ function onOffer(ev) {
 }
 
 function onDispatch(ev) {
-  const d = $("dispatch");
-  d.innerHTML = `
-    <div class="wacard">
-      <div class="wa-head"><span class="wa-ic">&#9679;</span> WhatsApp &rarr; ${ev.whatsapp.to}</div>
-      <div class="wa-body">
-        <div class="wa-bubble">${ev.whatsapp.body.replace(ev.stripe_checkout_url,
-          `<a href="${ev.stripe_checkout_url}" target="_blank">${ev.stripe_checkout_url}</a>`)}</div>
-        <div class="wa-meta">${ev.whatsapp.status} &middot; ${ev.whatsapp.message_id}</div>
-      </div>
-    </div>
-    <div class="stripe-chip"><b>STRIPE RETENTION CHECKOUT</b><br>${ev.stripe_checkout_url}</div>`;
+  // light the phone, push the whatsapp lockscreen card
+  const pct = Math.round(ev.whatsapp.body.match(/(\d+)%/)?.[1] || 0);
+  const screen = $("phonescreen");
+  $("wabody").innerHTML = ev.whatsapp.body.replace(
+    ev.stripe_checkout_url, `<a>${ev.stripe_checkout_url}</a>`);
+  $("stripebtn").href = ev.stripe_checkout_url;
+  $("stripebtn").textContent = `Review & Lock ${pct}% Discount (Stripe)`;
+  $("wats").textContent = "now";
+  screen.classList.add("lit");
+  $("phonestatus").textContent = "offer pushed to device";
+  addSys("OMNICHANNEL DISPATCH // whatsapp + stripe checkout live");
 }
 
 function onCallEnded(ev) {
   callActive = false;
-  addSys(ev.outcome === "saved"
-    ? `CALL ENDED // ACCOUNT SAVED @ ${ev.discount_pct}% credit`
-    : `CALL ENDED // outcome: ${ev.outcome}`);
+  if (ev.outcome === "saved" && ev.discount_pct && currentCustomer) {
+    const bump = Math.round(currentCustomer.mrr * 12);
+    arrProtected += bump;
+    $("mArr").textContent = `$${arrProtected.toLocaleString()}`;
+    addSys(`CALL ENDED // ACCOUNT SAVED @ ${ev.discount_pct}% credit // +$${bump.toLocaleString()} ARR`);
+  } else {
+    addSys(`CALL ENDED // outcome: ${ev.outcome}`);
+  }
   $("callstatus").textContent = "";
   markActiveRow(null);
   stopListening();
   setControls();
+  setTimeout(() => {
+    $("phonescreen").classList.remove("lit");
+    $("phonestatus").textContent = "device idle";
+  }, 9000);
 }
 
 /* transcript ui */
@@ -477,7 +575,8 @@ function resetTelemetry() {
   document.querySelectorAll(".link").forEach(l => l.classList.remove("on"));
   onSentiment(0);
   $("offerchip").classList.remove("show");
-  $("dispatch").innerHTML = '<div class="empty">Awaiting a closed offer. Stripe + WhatsApp payloads will appear here.</div>';
+  $("phonescreen").classList.remove("lit");
+  $("phonestatus").textContent = "device idle";
   $("transcript").innerHTML = "";
 }
 
@@ -497,10 +596,10 @@ function setControls() {
 
 /* tts */
 function speak(text) {
-  if (!ttsOn || !window.speechSynthesis) return;
+  if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.rate = 1.02; u.pitch = 1.0;
+  u.rate = 1.02;
   speechSynthesis.speak(u);
 }
 
@@ -533,7 +632,7 @@ async function startListening() {
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     attachAnalyser(micStream);
-  } catch (_) { /* no mic -> simulated wave */ }
+  } catch (_) { /* no mic -> simulated bars */ }
   $("micbtn").classList.add("live");
 }
 
@@ -552,52 +651,73 @@ $("txtin").addEventListener("keydown", (e) => {
 });
 $("endbtn").onclick = endCall;
 
-/* audio visualizer */
-let micStream = null, audioCtx = null, analyser = null, analyserData = null;
+/* 32-bar equalizer */
+let micStream = null, audioCtx = null, analyser = null, freqData = null;
 
 function attachAnalyser(stream) {
   audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
   const src = audioCtx.createMediaStreamSource(stream);
   analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 256;
-  analyserData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.fftSize = 128;
+  freqData = new Uint8Array(analyser.frequencyBinCount);
   src.connect(analyser);
 }
 function detachAnalyser() { analyser = null; }
 
-function drawWave() {
-  const c = $("wave");
+const EQ_BARS = 32;
+const barLvl = new Float32Array(EQ_BARS);
+
+function drawEq() {
+  const c = $("eq");
   const ctx = c.getContext("2d");
-  const w = c.width = c.offsetWidth;
-  const h = c.height = c.offsetHeight;
   let t = 0;
   (function frame() {
     requestAnimationFrame(frame);
-    t += 0.08;
+    t += 0.09;
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
     ctx.clearRect(0, 0, w, h);
-    ctx.beginPath();
+
     const speaking = window.speechSynthesis && speechSynthesis.speaking;
-    for (let x = 0; x < w; x++) {
-      let amp;
+    const gap = 3, bw = (w - gap * (EQ_BARS - 1)) / EQ_BARS;
+
+    if (analyser && listening) analyser.getByteFrequencyData(freqData);
+
+    for (let i = 0; i < EQ_BARS; i++) {
+      let target;
       if (analyser && listening) {
-        analyser.getByteTimeDomainData(analyserData);
-        const v = analyserData[Math.floor(x / w * analyserData.length)] - 128;
-        amp = (v / 128) * h * 0.9;
+        target = freqData[Math.floor(i / EQ_BARS * freqData.length * 0.8)] / 255;
       } else if (speaking) {
-        amp = Math.sin(x * 0.045 + t * 3) * Math.sin(t * 1.7) * h * 0.32
-            + Math.sin(x * 0.09 + t * 5) * h * 0.08;
+        target = Math.abs(Math.sin(i * 0.7 + t * 4.2) * Math.sin(t * 2.6 + i * 0.15))
+               * (0.55 + 0.45 * Math.sin(t * 7 + i));
       } else if (listening) {
-        amp = Math.sin(x * 0.06 + t * 4) * h * 0.12;
+        target = 0.18 + 0.12 * Math.sin(t * 5 + i * 0.5);
       } else {
-        amp = Math.sin(x * 0.05 + t) * h * 0.04;
+        target = 0.06 + 0.03 * Math.sin(t * 1.4 + i * 0.4);
       }
-      const y = h / 2 + amp;
-      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      barLvl[i] += (target - barLvl[i]) * 0.35;   // decay smoothing
+      const bh = Math.max(2, barLvl[i] * h);
+      const x = i * (bw + gap);
+      const hot = barLvl[i];
+      const grad = ctx.createLinearGradient(0, h, 0, h - bh);
+      grad.addColorStop(0, speaking || listening ? "#10b981" : "#1c2b26");
+      grad.addColorStop(1, hot > 0.55 ? "#34d399" : "#10b981");
+      ctx.fillStyle = grad;
+      ctx.globalAlpha = speaking || listening ? 0.95 : 0.5;
+      ctx.beginPath();
+      ctx.roundRect(x, h - bh, bw, bh, 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
-    ctx.strokeStyle = listening ? "#f87171" : speaking ? "#22d3ee" : "#26334a";
-    ctx.lineWidth = 2;
-    ctx.stroke();
   })();
+}
+
+/* phone clock */
+function tickClock() {
+  const d = new Date();
+  const s = `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")}`;
+  $("phonetime").textContent = s;
+  $("locktime").textContent = s;
 }
 
 /* boot */
@@ -605,7 +725,9 @@ recognition = initRecognition();
 buildFsm();
 connect();
 loadRoster();
-drawWave();
+drawEq();
+tickClock();
+setInterval(tickClock, 30000);
 setInterval(loadRoster, 15000);
 </script>
 </body>
