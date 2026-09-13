@@ -1,0 +1,62 @@
+{
+  "salesforce": {
+    "competitor": "Salesforce",
+    "their_pitch": "Enterprise market leader with the biggest ecosystem and brand recognition.",
+    "weakness": "Sticker price excludes mandatory implementation partners; typical mid-market deployment runs 6+ months and total cost of ownership is 2.4x license cost (Forrester TEI).",
+    "proof_points": [
+      "Average Salesforce implementation takes 6-9 months vs weeks on our platform",
+      "Einstein AI features are gated behind the $165/user Unlimited tier",
+      "G2 reports 41% of switchers cite 'unexpected admin overhead' as the top pain"
+    ],
+    "pricing_angle": "Per-seat license plus admin headcount; our flat plan is typically 38% cheaper at their scale.",
+    "rebuttal": "I totally understand the Salesforce appeal -- everyone evaluates them. What most teams discover is that the license is only about 40% of the real cost once you add the implementation partner and a dedicated admin. For a team your size that's usually a 2.4x multiplier and a six-month rollout before you see value. You're live on our platform today and your workflows are already built -- switching resets that clock."
+  },
+  "hubspot": {
+    "competitor": "HubSpot",
+    "their_pitch": "Friendly all-in-one suite with a generous free tier and strong marketing tools.",
+    "weakness": "The free tier is a funnel into per-seat and per-contact pricing that scales aggressively; enterprise features require the Professional/Enterprise tiers where costs triple.",
+    "proof_points": [
+      "Contact-tier pricing grows with the database, not with usage",
+      "Enterprise-grade reporting requires the $800+/mo Professional tier",
+      "Native automation depth is capped -- complex workflows force paid Operations Hub add-ons"
+    ],
+    "pricing_angle": "Looks cheaper at signup; at their contact volume the real bill typically lands 55-70% higher than ours within a year.",
+    "rebuttal": "HubSpot's free tier is genuinely nice -- the catch is that it's priced per contact and per seat, so the bill compounds as you grow. Teams at your scale typically see the real cost land 60% higher than ours within the first year, and the reporting you'd need lives in their Enterprise tier. I'd rather show you the actual three-year cost curve than let you find out mid-contract."
+  },
+  "linear": {
+    "competitor": "Linear",
+    "their_pitch": "Fast, opinionated issue tracker loved by engineering teams.",
+    "weakness": "Excellent for eng-led issue tracking but not a revenue platform -- no CRM, no billing, no customer-facing workflows, so it replaces only a slice of the stack.",
+    "proof_points": [
+      "Covers issue tracking only -- you still need CRM, billing, and reporting elsewhere",
+      "No built-in revenue or account hierarchy views for GTM teams",
+      "Data export is JSON-only; migration back is manual"
+    ],
+    "pricing_angle": "Cheap per seat but adds a second vendor; consolidating on us removes an integration and a bill.",
+    "rebuttal": "Linear is a great tool for pure engineering issue tracking -- I'd never argue otherwise. But it only covers one slice of what you run on us: issues, yes, but not CRM, billing, or your customer workflows. Moving eng to Linear means paying us AND them, plus maintaining a sync between the two. Consolidation is usually the bigger win."
+  },
+  "acme": {
+    "competitor": "Acme",
+    "their_pitch": "Low-cost challenger promising feature parity at half the price.",
+    "weakness": "Thin support bench (no named CSM, 48h SLA) and an immature enterprise feature set -- SSO/SAML and audit logging only shipped last quarter.",
+    "proof_points": [
+      "No named customer success manager; best-effort support with a 48h SLA",
+      "SSO/SAML and audit logs shipped recently and lack SOC 2 Type II coverage",
+      "No migration tooling -- customers rebuild integrations by hand"
+    ],
+    "pricing_angle": "Headline price is lower, but missing compliance features force paid workarounds; we beat them on risk-adjusted cost.",
+    "rebuttal": "I've seen Acme's pricing -- on the sticker it looks like half of ours. The part that doesn't make the slide is that their enterprise features are brand new: SSO and audit logging shipped last quarter and aren't covered by their SOC 2 report yet. For a company with your compliance needs that's real risk. And their support is a 48-hour best-effort queue -- you have a named team with us today."
+  },
+  "_generic": {
+    "competitor": "a competitor",
+    "their_pitch": "A competing platform promising a better deal.",
+    "weakness": "Switching costs are real: data migration, re-integration, and team retraining typically consume a full quarter of productivity.",
+    "proof_points": [
+      "Migration projects average 90 days for accounts at your scale",
+      "Every integration and workflow would need to be rebuilt and re-tested",
+      "Your team's existing playbooks and reporting history don't transfer"
+    ],
+    "pricing_angle": "Any headline discount rarely survives the migration cost and the first renewal.",
+    "rebuttal": "Completely fair to look at alternatives -- smart teams do. What I'd flag is the switching cost: migration, re-integration, and retraining usually eat a full quarter of productivity, and your reporting history doesn't transfer. Before you absorb that, let me make staying worth your while."
+  }
+}

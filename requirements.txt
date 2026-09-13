@@ -1,0 +1,7 @@
+# Frozen dependency set -- pure Python only, no Node.js, no native wheels.
+starlette==1.6.0
+uvicorn==0.52.4
+anyio==4.15.1
+h11==0.16.0
+click==8.5.0
+idna==3.19

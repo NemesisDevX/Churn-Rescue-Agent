@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment / secrets
+.env
+
+# Local data
+data/
+*.db
+*.sqlite3
+
+# Node (explicitly unused -- repo is pure Python + vanilla JS)
+node_modules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
