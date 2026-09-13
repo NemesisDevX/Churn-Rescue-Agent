@@ -4,7 +4,9 @@ Run:  python -m unittest tests.test_fsm_flow -v
 """
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from churn_rescue.agent import AgentState, RetentionAgent, MAX_DISCOUNT_PCT
 from churn_rescue.db import Customer
@@ -43,7 +45,12 @@ class TestAngryCustomerFlow(unittest.TestCase):
     """fury -> battlecards -> escalation -> save."""
 
     def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
         self.agent = RetentionAgent(make_customer())
+        self.agent.contracts_dir = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
 
     def test_full_save_flow(self) -> None:
         agent = self.agent
@@ -59,7 +66,8 @@ class TestAngryCustomerFlow(unittest.TestCase):
         # utt 1: rage + competitor + price -> COUNTER_INTEL -> INCENTIVE_AUTH
         events = agent.handle_utterance(
             "I'm furious. We're canceling and moving to Salesforce - "
-            "your pricing is a joke and the product is slow."
+            "your pricing is a joke and the product is slow. "
+            "Absolute garbage, a total nightmare, completely useless."
         )
         visited = [e["to"] for e in events_of(events, "state_change")]
         self.assertIn("COUNTER_INTEL", visited)
@@ -76,6 +84,18 @@ class TestAngryCustomerFlow(unittest.TestCase):
 
         sent = events_of(events, "sentiment")[0]
         self.assertLess(sent["score"], 0.0, "angry utterance must score negative")
+
+        # sentiment below -0.90 must trip the critical-churn flag
+        crit = events_of(events, "critical_churn")
+        self.assertEqual(len(crit), 1)
+        self.assertLessEqual(crit[0]["score"], -0.90)
+
+        # operator hits MANUAL OVERRIDE -> HUMAN_TAKEOVER -> back to listening
+        events = agent.takeover()
+        visited = [e["to"] for e in events_of(events, "state_change")]
+        self.assertIn("HUMAN_TAKEOVER", visited)
+        self.assertEqual(visited[-1], "ENGAGE_LISTEN")
+        self.assertTrue(agent.human_override)
 
         # utt 2: lowball rejection -> escalate
         events = agent.handle_utterance(
@@ -105,6 +125,10 @@ class TestAngryCustomerFlow(unittest.TestCase):
 
         dispatch = events_of(events, "dispatch")[0]
         self.assertIn("checkout.stripe.com", dispatch["stripe_checkout_url"])
+        pdf = dispatch["pdf"]
+        self.assertTrue(pdf["filename"].endswith(".pdf"))
+        self.assertTrue(Path(pdf["path"]).exists())
+        self.assertTrue(Path(pdf["path"]).read_bytes().startswith(b"%PDF-1.4"))
         wa = dispatch["whatsapp"]
         self.assertEqual(wa["to"], "+14155550101")
         self.assertIn(str(int(round(offer3["discount_pct"]))), wa["body"])
@@ -125,6 +149,8 @@ class TestAngryCustomerFlow(unittest.TestCase):
             ("COUNTER_INTEL", "ENGAGE_LISTEN"),
             ("ENGAGE_LISTEN", "INCENTIVE_AUTH"),
             ("INCENTIVE_AUTH", "ENGAGE_LISTEN"),
+            ("ENGAGE_LISTEN", "HUMAN_TAKEOVER"),
+            ("HUMAN_TAKEOVER", "ENGAGE_LISTEN"),
             ("ENGAGE_LISTEN", "OMNICHANNEL_CLOSE"),
             ("OMNICHANNEL_CLOSE", "IDLE"),
         }

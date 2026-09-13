@@ -1,5 +1,8 @@
 """ASGI server: dashboard + roster API + /ws telemetry channel.
 
+Supports N concurrent retention calls (swarm mode) -- every agent gets a
+call_id and every outbound event carries it so the UI can route per column.
+
     python -m churn_rescue.server   ->  http://127.0.0.1:8000
 """
 from __future__ import annotations
@@ -18,9 +21,9 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .agent import RetentionAgent
+from .contracts import CONTRACTS_DIR
 from .db import (
     DEFAULT_DB_PATH,
-    Customer,
     get_customer,
     init_db,
     list_customers,
@@ -32,8 +35,7 @@ logger = logging.getLogger("churn_rescue.server")
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-# one call at a time keeps demo state unambiguous
-active_agent: RetentionAgent | None = None
+agents: dict[str, RetentionAgent] = {}   # call_id -> live FSM
 _ws_clients: set[WebSocket] = set()
 
 
@@ -54,29 +56,52 @@ async def broadcast(event: dict[str, Any]) -> None:
             _ws_clients.discard(ws)
 
 
-async def emit(events: list[dict[str, Any]]) -> None:
-    """Broadcast FSM events; persist call_log row when the call ends."""
+async def emit(agent: RetentionAgent, events: list[dict[str, Any]]) -> None:
+    """Stamp call_id on each event, broadcast, persist on termination."""
+    call_id = agent.customer.customer_id
     for event in events:
+        event.setdefault("call_id", call_id)
         await broadcast(event)
-        if event["type"] == "call_ended" and active_agent is not None:
+        if event["type"] == "call_ended":
             log_call(
-                customer_id=active_agent.customer.customer_id,
-                outcome=active_agent.outcome or "unknown",
-                discount_pct=active_agent.current_offer,
-                states_visited=active_agent.end_summary()["states_visited"],
-                transcript=active_agent.transcript,
+                customer_id=call_id,
+                outcome=agent.outcome or "unknown",
+                discount_pct=agent.current_offer,
+                states_visited=agent.end_summary()["states_visited"],
+                transcript=agent.transcript,
                 db_path=DEFAULT_DB_PATH,
             )
-            set_customer_status(
-                active_agent.customer.customer_id,
-                "saved" if active_agent.outcome == "saved" else "churned",
-                DEFAULT_DB_PATH,
-            )
+            status = "saved" if agent.outcome == "saved" else "churned"
+            if agent.outcome == "abandoned":
+                status = "at_risk"
+            set_customer_status(call_id, status, DEFAULT_DB_PATH)
             await broadcast({
                 "type": "customer_status",
-                "customer_id": active_agent.customer.customer_id,
-                "status": "saved" if active_agent.outcome == "saved" else "churned",
+                "call_id": call_id,
+                "customer_id": call_id,
+                "status": status,
             })
+            agents.pop(call_id, None)
+
+
+async def start_agent(customer_id: str) -> RetentionAgent | None:
+    """Arm an FSM for one account and fire the greeting. No-op if live."""
+    if customer_id in agents and agents[customer_id].call_active:
+        return None
+    customer = get_customer(customer_id, DEFAULT_DB_PATH)
+    if customer is None:
+        return None
+    set_customer_status(customer_id, "in_call", DEFAULT_DB_PATH)
+    await broadcast({
+        "type": "customer_status",
+        "call_id": customer_id,
+        "customer_id": customer_id,
+        "status": "in_call",
+    })
+    agent = RetentionAgent(customer)
+    agents[customer_id] = agent
+    await emit(agent, agent.start_call())
+    return agent
 
 
 # REST API
@@ -86,45 +111,40 @@ async def api_customers(request) -> JSONResponse:
 
 
 async def api_start_call(request) -> JSONResponse:
-    global active_agent
     body = await request.json()
-    customer_id = body.get("customer_id")
-    customer = get_customer(customer_id, DEFAULT_DB_PATH)
-    if customer is None:
-        return JSONResponse({"error": "unknown customer_id"}, status_code=404)
-    if active_agent is not None and active_agent.call_active:
-        return JSONResponse({"error": "a call is already in progress"}, status_code=409)
-
-    set_customer_status(customer.customer_id, "in_call", DEFAULT_DB_PATH)
-    await broadcast({
-        "type": "customer_status",
-        "customer_id": customer.customer_id,
-        "status": "in_call",
-    })
-
-    active_agent = RetentionAgent(customer)
-    events = active_agent.start_call()
-    await emit(events)
-    return JSONResponse({"call_id": customer.customer_id, "events": events})
+    agent = await start_agent(body.get("customer_id"))
+    if agent is None:
+        return JSONResponse(
+            {"error": "unknown customer_id or call already live"}, status_code=409)
+    return JSONResponse({"call_id": agent.customer.customer_id})
 
 
 async def api_utterance(request) -> JSONResponse:
     """Text fallback when Web Speech API is unavailable."""
-    if active_agent is None or not active_agent.call_active:
-        return JSONResponse({"error": "no active call"}, status_code=409)
     body = await request.json()
-    events = active_agent.handle_utterance(body.get("text", ""))
-    await emit(events)
-    return JSONResponse({"events": events})
+    agent = agents.get(body.get("call_id"))
+    if agent is None or not agent.call_active:
+        return JSONResponse({"error": "no active call"}, status_code=409)
+    await emit(agent, agent.handle_utterance(body.get("text", "")))
+    return JSONResponse({"ok": True})
+
+
+async def api_override(request) -> JSONResponse:
+    body = await request.json()
+    agent = agents.get(body.get("call_id"))
+    if agent is None or not agent.call_active:
+        return JSONResponse({"error": "no active call"}, status_code=409)
+    await emit(agent, agent.takeover())
+    return JSONResponse({"ok": True})
 
 
 async def api_end_call(request) -> JSONResponse:
-    global active_agent
-    if active_agent is not None and active_agent.call_active:
+    body = await request.json()
+    agent = agents.get(body.get("call_id"))
+    if agent is not None and agent.call_active:
         events: list[dict[str, Any]] = []
-        active_agent._end_call("abandoned", events)
-        await emit(events)
-    active_agent = None
+        agent._end_call("abandoned", events)
+        await emit(agent, events)
     return JSONResponse({"status": "ended"})
 
 
@@ -134,7 +154,6 @@ async def dashboard(request) -> FileResponse:
 
 # ws telemetry
 async def ws_telemetry(websocket: WebSocket) -> None:
-    global active_agent
     await websocket.accept()
     _ws_clients.add(websocket)
     try:
@@ -143,21 +162,24 @@ async def ws_telemetry(websocket: WebSocket) -> None:
             mtype = message.get("type")
 
             if mtype == "utterance":
-                if active_agent is not None and active_agent.call_active:
-                    await emit(active_agent.handle_utterance(message.get("text", "")))
+                agent = agents.get(message.get("call_id"))
+                if agent and agent.call_active:
+                    await emit(agent, agent.handle_utterance(message.get("text", "")))
             elif mtype == "start_call":
-                customer_id = message.get("customer_id")
-                customer = get_customer(customer_id, DEFAULT_DB_PATH)
-                if customer and not (active_agent and active_agent.call_active):
-                    set_customer_status(customer.customer_id, "in_call", DEFAULT_DB_PATH)
-                    active_agent = RetentionAgent(customer)
-                    await emit(active_agent.start_call())
+                await start_agent(message.get("customer_id"))
+            elif mtype == "swarm":
+                for cid in message.get("customer_ids", []):
+                    await start_agent(cid)
+            elif mtype == "override":
+                agent = agents.get(message.get("call_id"))
+                if agent and agent.call_active:
+                    await emit(agent, agent.takeover())
             elif mtype == "end_call":
-                if active_agent is not None and active_agent.call_active:
+                agent = agents.get(message.get("call_id"))
+                if agent and agent.call_active:
                     events: list[dict[str, Any]] = []
-                    active_agent._end_call("abandoned", events)
-                    await emit(events)
-                active_agent = None
+                    agent._end_call("abandoned", events)
+                    await emit(agent, events)
             elif mtype == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
     except WebSocketDisconnect:
@@ -166,19 +188,25 @@ async def ws_telemetry(websocket: WebSocket) -> None:
         _ws_clients.discard(websocket)
 
 
+CONTRACTS_DIR.mkdir(parents=True, exist_ok=True)
+
 routes = [
     Route("/", dashboard),
     Route("/api/customers", api_customers, methods=["GET"]),
     Route("/api/calls/start", api_start_call, methods=["POST"]),
     Route("/api/calls/utterance", api_utterance, methods=["POST"]),
+    Route("/api/calls/override", api_override, methods=["POST"]),
     Route("/api/calls/end", api_end_call, methods=["POST"]),
     WebSocketRoute("/ws", ws_telemetry),
+    Mount("/contracts", app=StaticFiles(directory=CONTRACTS_DIR), name="contracts"),
     Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
 ]
+
 
 @asynccontextmanager
 async def lifespan(app):
     init_db(DEFAULT_DB_PATH)
+    CONTRACTS_DIR.mkdir(parents=True, exist_ok=True)
     yield
 
 

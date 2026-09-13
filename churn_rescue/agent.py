@@ -13,6 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from .contracts import render_addendum
 from .db import Customer
 
 BATTLECARDS_PATH = Path(__file__).resolve().parent / "battlecards.json"
@@ -26,6 +27,11 @@ class AgentState(str, Enum):
     COUNTER_INTEL = "COUNTER_INTEL"
     INCENTIVE_AUTH = "INCENTIVE_AUTH"
     OMNICHANNEL_CLOSE = "OMNICHANNEL_CLOSE"
+    HUMAN_TAKEOVER = "HUMAN_TAKEOVER"
+
+
+# sentiment at or below this flags the call for manual override
+CRITICAL_CHURN_THRESHOLD = -0.90
 
 
 # lexicon sentiment, no external NLP dep
@@ -127,6 +133,9 @@ class RetentionAgent:
         self.current_offer: float | None = None
         self.outcome: str | None = None
         self.dispatch: dict[str, Any] | None = None
+        self.critical_flagged = False
+        self.human_override = False
+        self.contracts_dir: Path | None = None
 
     # incentive math
     def _authorize_discount(self) -> float:
@@ -186,6 +195,13 @@ class RetentionAgent:
             "label": sentiment_label(self.sentiment),
         })
 
+        # trip the manual-override flag once; UI flashes the button
+        if (not self.critical_flagged
+                and self.sentiment <= CRITICAL_CHURN_THRESHOLD
+                and not self.human_override):
+            self.critical_flagged = True
+            events.append({"type": "critical_churn", "score": self.sentiment})
+
         if self.state != AgentState.ENGAGE_LISTEN:
             return events
 
@@ -231,6 +247,22 @@ class RetentionAgent:
             self._incentive_auth(events)
         else:
             events.append(self._ev_agent(self._probe_line()))
+        return events
+
+    def takeover(self) -> list[dict[str, Any]]:
+        """Operator hits MANUAL OVERRIDE -> HUMAN_TAKEOVER, bridge line, back
+        to ENGAGE_LISTEN with the human (VP) driving."""
+        events: list[dict[str, Any]] = []
+        if not self.call_active:
+            return events
+        self.human_override = True
+        self._goto(AgentState.HUMAN_TAKEOVER, events)
+        events.append(self._ev_agent(
+            "I completely understand. Let me bridge in our VP of Sales "
+            "right now to resolve this."
+        ))
+        events.append({"type": "takeover", "by": "vp_of_sales"})
+        self._goto(AgentState.ENGAGE_LISTEN, events)
         return events
 
     def end_summary(self) -> dict[str, Any]:
@@ -296,14 +328,18 @@ class RetentionAgent:
             f"https://checkout.stripe.com/c/pay/cs_sim_retention_"
             f"{c.customer_id}_{int(round(discount))}pct"
         )
+        pdf = render_addendum(c, discount, out_dir=self.contracts_dir) \
+            if self.contracts_dir else render_addendum(c, discount)
         whatsapp_body = (
             f"Hi {c.contact_name.split()[0]} - thanks for staying with us! "
             f"Your {discount:.0f}% retention credit is confirmed for "
             f"{c.company_name} ({c.plan} plan, through {c.contract_end_date}). "
-            f"Complete it securely here: {stripe_url}"
+            f"Complete it securely here: {stripe_url} "
+            f"-- signed addendum attached as PDF."
         )
         self.dispatch = {
             "stripe_checkout_url": stripe_url,
+            "pdf": pdf,
             "whatsapp": {
                 "channel": "whatsapp",
                 "to": c.phone,
