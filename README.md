@@ -7,26 +7,50 @@ Stripe + WhatsApp retention offer *during the call*.
 
 Pure Python + vanilla HTML/JS/CSS. **No Node.js. No build step.**
 
+## V4 provider layer (Groq + AssemblyAI)
+
+Optional real-provider mode — set env keys and the same pipeline upgrades
+in place; unset (or any API error) it falls back to the deterministic
+static lines and browser Web Speech, so the demo never breaks.
+
+| Piece | Provider | Module | Fallback |
+| --- | --- | --- | --- |
+| Brain (response gen) | Groq `llama3-70b-8192` via stdlib `urllib` → `api.groq.com/openai/v1/chat/completions` | `churn_rescue/llm.py` | Static FSM lines |
+| Ears (STT) | AssemblyAI realtime `wss://api.assemblyai.com/v2/realtime/ws` (PCM16/16 kHz over `/ws`, `language_detection=true`) | `churn_rescue/stt.py` + `static/pcm-worklet.js` | Browser Web Speech API |
+
+```powershell
+$env:GROQ_API_KEY = "gsk_..."        # dynamic, same-language responses
+$env:ASSEMBLYAI_API_KEY = "aai_..."  # real streaming STT instead of browser SR
+python -m churn_rescue.server
+```
+
+On `/ws` connect the server announces `{"type":"capabilities","llm":…,"stt":…}`
+and the dashboard picks its mic path automatically. Maya's Groq system prompt
+forces same-language replies (English/Spanish/French/Arabic) under 2 sentences.
+
 ## Architecture
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
 │  Browser — Mission Control (churn_rescue/static/index.html)     │
-│  roster │ phone terminal │ FSM tracker │ sentiment │ dispatch   │
+│  roster │ 3x call columns │ FSM tracker │ sentiment │ phone     │
 └───────────────┬───────────────────────────────▲─────────────────┘
-                │ REST + WebSocket (JSON events)│
+                │ REST + WebSocket (JSON events)│ PCM16 audio
 ┌───────────────▼───────────────────────────────┴─────────────────┐
 │  churn_rescue/server.py — Starlette ASGI app (127.0.0.1:8000)   │
-│  /api/customers │ /api/calls/* │ /ws telemetry                  │
-└───────────────┬─────────────────────────────────────────────────┘
-                │
-┌───────────────▼──────────────┐   ┌──────────────────────────────┐
-│  churn_rescue/agent.py        │   │  churn_rescue/db.py          │
-│  RetentionAgent FSM           │──▶│  SQLite: customers, call_log │
-│  sentiment · intents · offers │   └──────────────────────────────┘
-└───────────────┬──────────────┘
-                │ reads
-        battlecards.json — Salesforce / HubSpot / Linear / Acme
+│  /api/customers │ /api/calls/* │ /ws telemetry+stt │ /contracts │
+└──────┬───────────────────┬──────────────────┬───────────────────┘
+       │                   │                  │
+┌──────▼───────┐   ┌───────▼───────┐   ┌──────▼───────────────────┐
+│ agent.py     │   │ llm.py        │   │ stt.py                   │
+│ RetentionAgent│──▶│ Groq urllib   │   │ AssemblyAI realtime      │
+│ swarm FSMs   │   │ (fallback:    │   │ (fallback: Web Speech)   │
+└──────┬───────┘   │ static lines) │   └──────────────────────────┘
+       │           └───────────────┘
+       │ reads
+       ├── battlecards.json — Salesforce / HubSpot / Linear / Acme
+       ├── contracts.py — zero-dep PDF addendum writer
+       └── db.py — SQLite: customers, call_log
 ```
 
 ## The Voice FSM

@@ -4,10 +4,14 @@ Run:  python -m unittest tests.test_fsm_flow -v
 """
 from __future__ import annotations
 
+import asyncio
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from churn_rescue import llm, stt
 from churn_rescue.agent import AgentState, RetentionAgent, MAX_DISCOUNT_PCT
 from churn_rescue.db import Customer
 
@@ -48,9 +52,15 @@ class TestAngryCustomerFlow(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.agent = RetentionAgent(make_customer())
         self.agent.contracts_dir = Path(self._tmp.name)
+        # pin the no-key env so tests always exercise the static fallback
+        self._env = {k: os.environ.pop(k, None)
+                     for k in ("GROQ_API_KEY", "ASSEMBLYAI_API_KEY")}
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
+        for k, v in self._env.items():
+            if v is not None:
+                os.environ[k] = v
 
     def test_full_save_flow(self) -> None:
         agent = self.agent
@@ -192,6 +202,43 @@ class TestAngryCustomerFlow(unittest.TestCase):
         events = agent.handle_utterance("hello?")
         self.assertEqual(events, [])
         self.assertEqual(agent.state, AgentState.IDLE)
+
+
+class TestProviderFallbacks(unittest.TestCase):
+    """V4: Groq/AssemblyAI must degrade silently without keys or on errors."""
+
+    def setUp(self) -> None:
+        self._env = {k: os.environ.pop(k, None)
+                     for k in ("GROQ_API_KEY", "ASSEMBLYAI_API_KEY")}
+
+    def tearDown(self) -> None:
+        for k, v in self._env.items():
+            if v is not None:
+                os.environ[k] = v
+
+    def test_groq_none_without_key(self) -> None:
+        self.assertFalse(llm.llm_available())
+        self.assertIsNone(
+            llm.groq_reply([{"role": "user", "content": "hi"}]))
+
+    def test_groq_none_on_api_error(self) -> None:
+        os.environ["GROQ_API_KEY"] = "sk-bad"
+        self.assertTrue(llm.llm_available())
+        with mock.patch.object(
+                llm.urllib.request, "urlopen", side_effect=OSError("down")):
+            self.assertIsNone(
+                llm.groq_reply([{"role": "user", "content": "hi"}]))
+
+    def test_dynamic_line_uses_static_fallback(self) -> None:
+        agent = RetentionAgent(make_customer())
+        agent.start_call()
+        ev = agent._ev_dynamic("say anything", "STATIC-LINE")
+        self.assertEqual(ev["type"], "transcript")
+        self.assertEqual(ev["text"], "STATIC-LINE")
+
+    def test_stt_none_without_key(self) -> None:
+        self.assertFalse(stt.stt_available())
+        self.assertFalse(asyncio.run(stt.AssemblyStream().connect()))
 
 
 if __name__ == "__main__":

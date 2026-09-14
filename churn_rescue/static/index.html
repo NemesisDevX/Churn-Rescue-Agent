@@ -565,6 +565,22 @@ function handleEvent(ev) {
       break;
     }
     case "customer_status": setStatusTag(ev.customer_id, ev.status); break;
+    case "capabilities": {
+      sttMode = ev.stt;
+      const col0 = Object.values(cols)[0];
+      if (col0) addSys(col0, `UPLINK // llm=${ev.llm} stt=${ev.stt}`);
+      break;
+    }
+    case "stt_status": {
+      const col = cols[ev.call_id];
+      if (col) addSys(col, `STT // ${ev.mode === "assemblyai"
+        ? "AssemblyAI realtime" : "browser WebSpeech fallback"}`);
+      if (ev.mode !== "assemblyai" && listeningFor === ev.call_id
+          && recognition) {
+        try { recognition.start(); } catch (_) {}
+      }
+      break;
+    }
   }
 }
 
@@ -620,6 +636,41 @@ function speak(text) {
   speechSynthesis.speak(u);
 }
 
+/* stt: AssemblyAI pcm stream when the server announces it, webspeech else */
+let sttMode = "webspeech";
+let sttCtx = null, sttSrc = null, sttNode = null, sttGain = null;
+
+function b64(buf) {
+  let bin = "";
+  const b = new Uint8Array(buf);
+  for (let i = 0; i < b.length; i += 4096)
+    bin += String.fromCharCode.apply(null, b.subarray(i, i + 4096));
+  return btoa(bin);
+}
+
+async function startAaiStream(cid) {
+  sttCtx = new AudioContext({ sampleRate: 16000 });
+  sttSrc = sttCtx.createMediaStreamSource(micStream);
+  await sttCtx.audioWorklet.addModule("/static/pcm-worklet.js");
+  sttNode = new AudioWorkletNode(sttCtx, "pcm-sink");
+  sttNode.port.onmessage = (e) => {
+    if (listeningFor === cid && wsOpen)
+      ws.send(JSON.stringify({ type: "stt_chunk", call_id: cid, data: b64(e.data) }));
+  };
+  sttGain = sttCtx.createGain();
+  sttGain.gain.value = 0;
+  sttSrc.connect(sttNode);
+  sttNode.connect(sttGain);
+  sttGain.connect(sttCtx.destination);
+}
+
+function stopAaiStream() {
+  if (sttNode) { sttNode.disconnect(); sttNode.port.onmessage = null; sttNode = null; }
+  if (sttSrc) { sttSrc.disconnect(); sttSrc = null; }
+  if (sttGain) { sttGain.disconnect(); sttGain = null; }
+  if (sttCtx) { sttCtx.close(); sttCtx = null; }
+}
+
 /* stt -> routed to the column whose mic is live */
 function initRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -639,15 +690,25 @@ function initRecognition() {
 
 async function startListening(cid) {
   listeningFor = cid;
-  if (recognition) { try { recognition.start(); } catch (_) {} }
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     attachAnalyser(micStream);
   } catch (_) { /* no mic -> simulated bars */ }
+  if (sttMode === "assemblyai" && micStream) {
+    if (wsOpen) ws.send(JSON.stringify({ type: "stt_begin", call_id: cid }));
+    try {
+      await startAaiStream(cid);
+      return;
+    } catch (_) { stopAaiStream(); /* drop to webspeech */ }
+  }
+  if (recognition) { try { recognition.start(); } catch (_) {} }
 }
 
 function stopListening() {
+  if (listeningFor && wsOpen)
+    ws.send(JSON.stringify({ type: "stt_end", call_id: listeningFor }));
   listeningFor = null;
+  stopAaiStream();
   if (recognition) try { recognition.stop(); } catch (_) {}
   if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
   detachAnalyser();

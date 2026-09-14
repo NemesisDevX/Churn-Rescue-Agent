@@ -8,6 +8,7 @@ call_id and every outbound event carries it so the UI can route per column.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -22,6 +23,8 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .agent import RetentionAgent
 from .contracts import CONTRACTS_DIR
+from .llm import llm_available
+from .stt import AssemblyStream, stt_available
 from .db import (
     DEFAULT_DB_PATH,
     get_customer,
@@ -36,7 +39,38 @@ logger = logging.getLogger("churn_rescue.server")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 agents: dict[str, RetentionAgent] = {}   # call_id -> live FSM
+stt_sessions: dict[str, AssemblyStream] = {}  # call_id -> live STT pipe
 _ws_clients: set[WebSocket] = set()
+
+
+async def run_utterance(agent: RetentionAgent, text: str) -> None:
+    """handle_utterance can block on Groq urllib -- keep it off the loop."""
+    events = await asyncio.to_thread(agent.handle_utterance, text)
+    await emit(agent, events)
+
+
+async def start_stt(call_id: str) -> None:
+    """Bridge browser mic chunks -> AssemblyAI -> FSM utterances."""
+    stream = AssemblyStream()
+    if not await stream.connect():
+        await broadcast({"type": "stt_status", "call_id": call_id,
+                         "mode": "webspeech"})
+        return
+    stt_sessions[call_id] = stream
+    await broadcast({"type": "stt_status", "call_id": call_id,
+                     "mode": "assemblyai"})
+    async for text in stream.transcripts():
+        agent = agents.get(call_id)
+        if agent is None or not agent.call_active:
+            break
+        await run_utterance(agent, text)
+    stt_sessions.pop(call_id, None)
+
+
+async def stop_stt(call_id: str) -> None:
+    stream = stt_sessions.pop(call_id, None)
+    if stream is not None:
+        await stream.close()
 
 
 async def broadcast(event: dict[str, Any]) -> None:
@@ -82,6 +116,7 @@ async def emit(agent: RetentionAgent, events: list[dict[str, Any]]) -> None:
                 "status": status,
             })
             agents.pop(call_id, None)
+            await stop_stt(call_id)
 
 
 async def start_agent(customer_id: str) -> RetentionAgent | None:
@@ -125,7 +160,7 @@ async def api_utterance(request) -> JSONResponse:
     agent = agents.get(body.get("call_id"))
     if agent is None or not agent.call_active:
         return JSONResponse({"error": "no active call"}, status_code=409)
-    await emit(agent, agent.handle_utterance(body.get("text", "")))
+    await run_utterance(agent, body.get("text", ""))
     return JSONResponse({"ok": True})
 
 
@@ -156,6 +191,11 @@ async def dashboard(request) -> FileResponse:
 async def ws_telemetry(websocket: WebSocket) -> None:
     await websocket.accept()
     _ws_clients.add(websocket)
+    await websocket.send_text(json.dumps({
+        "type": "capabilities",
+        "llm": "groq" if llm_available() else "static",
+        "stt": "assemblyai" if stt_available() else "webspeech",
+    }))
     try:
         while True:
             message = json.loads(await websocket.receive_text())
@@ -164,7 +204,19 @@ async def ws_telemetry(websocket: WebSocket) -> None:
             if mtype == "utterance":
                 agent = agents.get(message.get("call_id"))
                 if agent and agent.call_active:
-                    await emit(agent, agent.handle_utterance(message.get("text", "")))
+                    await run_utterance(agent, message.get("text", ""))
+            elif mtype == "stt_begin":
+                asyncio.create_task(start_stt(message.get("call_id")))
+            elif mtype == "stt_chunk":
+                stream = stt_sessions.get(message.get("call_id"))
+                if stream is not None:
+                    try:
+                        await stream.send_pcm(
+                            base64.b64decode(message.get("data", "")))
+                    except Exception:
+                        pass
+            elif mtype == "stt_end":
+                await stop_stt(message.get("call_id"))
             elif mtype == "start_call":
                 await start_agent(message.get("customer_id"))
             elif mtype == "swarm":

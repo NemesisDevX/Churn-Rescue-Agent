@@ -15,6 +15,7 @@ from typing import Any
 
 from .contracts import render_addendum
 from .db import Customer
+from .llm import SYSTEM_PROMPT, groq_reply
 
 BATTLECARDS_PATH = Path(__file__).resolve().parent / "battlecards.json"
 
@@ -165,6 +166,30 @@ class RetentionAgent:
         self.transcript.append({"speaker": "agent", "text": text})
         return {"type": "transcript", "speaker": "agent", "text": text}
 
+    # groq LPU generation; every dynamic line keeps its static twin as
+    # the fallback for missing keys / api errors
+    def _llm_messages(self, hint: str) -> list[dict[str, str]]:
+        c = self.customer
+        ctx = (
+            f" Account: {c.company_name} ({c.plan} plan, ${c.mrr:,.0f}/mo, "
+            f"contract ends {c.contract_end_date}). Competitor threat: "
+            f"{c.competitor_threat or 'none'}. Hard discount ceiling: "
+            f"{self.authorized_discount:.0f}%; live offer on the table: "
+            f"{(self.current_offer or 0):.0f}%."
+        )
+        msgs = [{"role": "system", "content": SYSTEM_PROMPT + ctx}]
+        for t in self.transcript[-8:]:
+            msgs.append({
+                "role": "assistant" if t["speaker"] == "agent" else "user",
+                "content": t["text"],
+            })
+        msgs.append({"role": "user", "content": f"[director note: {hint}]"})
+        return msgs
+
+    def _ev_dynamic(self, hint: str, fallback: str) -> dict[str, Any]:
+        reply = groq_reply(self._llm_messages(hint))
+        return self._ev_agent(reply or fallback)
+
     def start_call(self) -> list[dict[str, Any]]:
         """IDLE -> ENGAGE_LISTEN; emits the greeting the TTS layer speaks."""
         events: list[dict[str, Any]] = []
@@ -218,7 +243,9 @@ class RetentionAgent:
 
         # hard "no" while an offer is live kills the call
         if rejects and offer_active:
-            events.append(self._ev_agent(
+            events.append(self._ev_dynamic(
+                "They firmly rejected the offer. Close the call gracefully "
+                "and leave the door open.",
                 "Understood -- I'm sorry we couldn't change your mind today. "
                 "Your feedback goes straight to our product leadership, and "
                 "the door stays open if anything changes. Thank you for your "
@@ -239,14 +266,20 @@ class RetentionAgent:
 
         # nothing actionable -- probe
         if competitor:  # named but already countered
-            events.append(self._ev_agent(
+            events.append(self._ev_dynamic(
+                "They raised the competitor again after your counter. Ask "
+                "what single thing would make staying an easy decision.",
                 "Fair point. Beyond the platform comparison, what's the one "
                 "thing that would make staying an easy decision?"
             ))
         elif accepts:  # offer_active guard above makes this a safety net
             self._incentive_auth(events)
         else:
-            events.append(self._ev_agent(self._probe_line()))
+            events.append(self._ev_dynamic(
+                "No clear objection yet. Ask a short open question to draw "
+                "out what is driving the cancellation.",
+                self._probe_line()
+            ))
         return events
 
     def takeover(self) -> list[dict[str, Any]]:
@@ -287,7 +320,12 @@ class RetentionAgent:
             "pricing_angle": card["pricing_angle"],
             "proof_points": card["proof_points"],
         })
-        events.append(self._ev_agent(card["rebuttal"]))
+        events.append(self._ev_dynamic(
+            f"Counter their {card['competitor']} objection in their own "
+            f"words. Intel: {card['weakness']} Pricing angle: "
+            f"{card['pricing_angle']}",
+            card["rebuttal"]
+        ))
         self._goto(AgentState.ENGAGE_LISTEN, events)
 
     def _incentive_auth(self, events: list[dict[str, Any]]) -> None:
@@ -304,7 +342,11 @@ class RetentionAgent:
                 "mrr_before": c.mrr,
                 "mrr_after": round(new_mrr, 2),
             })
-            events.append(self._ev_agent(
+            events.append(self._ev_dynamic(
+                f"Offer them exactly {self.current_offer:.0f}% off -- "
+                f"${c.mrr:,.0f} down to ${new_mrr:,.0f}/mo through "
+                f"{c.contract_end_date}. Ask if that works and mention you "
+                f"can text the checkout link now.",
                 f"Here's what I'm authorized to do for you: a {self.current_offer:.0f}% "
                 f"retention credit on your {c.plan} plan -- that takes you from "
                 f"${c.mrr:,.0f} to ${new_mrr:,.0f} a month, locked in through "
@@ -312,7 +354,10 @@ class RetentionAgent:
                 f"phone right now. Does that work?"
             ))
         else:
-            events.append(self._ev_agent(
+            events.append(self._ev_dynamic(
+                f"You are at the hard ceiling of {self.authorized_discount:.0f}%. "
+                f"Tell them firmly but warmly this is the strongest offer "
+                f"finance authorized.",
                 f"I wish I could go further, but {self.authorized_discount:.0f}% is "
                 f"the hard ceiling finance has authorized for your account -- "
                 f"it's the strongest offer I can put on the table."
@@ -350,7 +395,10 @@ class RetentionAgent:
             },
         }
         events.append({"type": "dispatch", **self.dispatch})
-        events.append(self._ev_agent(
+        events.append(self._ev_dynamic(
+            f"They accepted. Confirm the {discount:.0f}% credit checkout "
+            f"link and PDF addendum are on their phone via WhatsApp, and "
+            f"thank {c.contact_name.split()[0]} by name.",
             f"Done -- I've just sent a secure checkout link with your "
             f"{discount:.0f}% credit to your phone on WhatsApp. It takes "
             f"thirty seconds to confirm and your service continues "
