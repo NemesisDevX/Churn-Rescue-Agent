@@ -15,7 +15,8 @@ from typing import Any
 
 from .contracts import render_addendum
 from .db import Customer
-from .llm import SYSTEM_PROMPT, groq_reply
+from .llm import SYSTEM_PROMPT, groq_reply, llm_available
+from .osint import fetch_company_brief
 
 BATTLECARDS_PATH = Path(__file__).resolve().parent / "battlecards.json"
 
@@ -110,6 +111,22 @@ _REJECT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# named vendor after a churn verb: "moving to Zenith", "Acme quoted us"
+_UNKNOWN_AFTER = re.compile(
+    r"\b(?:moving|switching|migrat\w*|going|leaving|choosing|signing|"
+    r"rolling out|moving over)\s+(?:over\s+)?(?:to|for|with)\s+"
+    r"([A-Za-z][\w-]{2,})\b",
+    re.IGNORECASE,
+)
+_UNKNOWN_BEFORE = re.compile(
+    r"\b([A-Za-z][\w-]{2,})\s+(?:quoted|offered|promised|pitched|demoed)\b",
+    re.IGNORECASE,
+)
+_NOT_VENDORS = {
+    "the", "our", "their", "your", "another", "someone", "something",
+    "somewhere", "else", "cheaper", "better", "them", "a", "an", "it",
+}
+
 
 def _load_battlecards() -> dict[str, dict[str, Any]]:
     with open(BATTLECARDS_PATH, encoding="utf-8") as f:
@@ -137,6 +154,8 @@ class RetentionAgent:
         self.critical_flagged = False
         self.human_override = False
         self.contracts_dir: Path | None = None
+        self.min_sentiment = 0.0
+        self.osint_targets: list[str] = []
 
     # incentive math
     def _authorize_discount(self) -> float:
@@ -214,6 +233,7 @@ class RetentionAgent:
         events.append({"type": "transcript", "speaker": "customer", "text": text})
 
         self.sentiment = score_sentiment(text)
+        self.min_sentiment = min(self.min_sentiment, self.sentiment)
         events.append({
             "type": "sentiment",
             "score": self.sentiment,
@@ -237,8 +257,15 @@ class RetentionAgent:
         rejects = bool(_REJECT_RE.search(text))
         offer_active = self.current_offer is not None
 
-        # competitor first -- arm the battlecard
-        if competitor and competitor not in self.countered_competitors:
+        # competitor first -- known battlecard, else live OSINT on an
+        # unfamiliar vendor name, else the generic card
+        unknown = self._detect_unknown_competitor(text)
+        if (competitor and competitor != "_generic"
+                and competitor not in self.countered_competitors):
+            self._counter_intel(competitor, events)
+        elif unknown and unknown not in self.countered_competitors:
+            self._osint_intel(unknown, events)
+        elif competitor and competitor not in self.countered_competitors:
             self._counter_intel(competitor, events)
 
         # hard "no" while an offer is live kills the call
@@ -417,6 +444,33 @@ class RetentionAgent:
             "discount_pct": self.current_offer,
         })
 
+    def _osint_intel(self, name: str, events: list[dict[str, Any]]) -> None:
+        """Unknown vendor -> COUNTER_INTEL via live web scrape + Groq."""
+        self._goto(AgentState.COUNTER_INTEL, events)
+        self.countered_competitors.add(name)
+        self.osint_targets.append(name)
+        events.append({"type": "osint", "competitor": name,
+                       "status": "scraping"})
+        brief = fetch_company_brief(name) if llm_available() else None
+        events.append({"type": "osint", "competitor": name,
+                       "status": "done" if brief else "offline",
+                       "snippet": (brief or "")[:160]})
+        hint = (
+            f"They named {name}, a competitor with no battlecard on file. "
+            f"Say you're pulling up {name}'s live pricing right now, then "
+            f"pivot to our consolidation value."
+        )
+        if brief:
+            hint += f" Live intel on {name}: {brief}"
+        events.append(self._ev_dynamic(
+            hint,
+            f"I'm pulling up {name}'s live pricing right now -- while that "
+            f"loads, here's what I can tell you: consolidating on us removes "
+            f"the double-stack cost entirely, and your team's workflows stay "
+            f"exactly where they are."
+        ))
+        self._goto(AgentState.ENGAGE_LISTEN, events)
+
     # utterance classification
     def _detect_competitor(self, text: str) -> str | None:
         lower = text.lower()
@@ -426,6 +480,17 @@ class RetentionAgent:
         if re.search(r"\b(competitor|alternative|another (tool|platform|vendor)|"
                      r"the other guys)\b", lower):
             return "_generic"
+        return None
+
+    def _detect_unknown_competitor(self, text: str) -> str | None:
+        """A vendor name with no battlecard -- fresh OSINT target."""
+        for rx in (_UNKNOWN_AFTER, _UNKNOWN_BEFORE):
+            m = rx.search(text)
+            if m:
+                name = m.group(1)
+                if (name.lower() not in _NOT_VENDORS
+                        and name.lower() not in self.battlecards):
+                    return name.title()
         return None
 
     def _probe_line(self) -> str:

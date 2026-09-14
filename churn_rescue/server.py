@@ -40,6 +40,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 agents: dict[str, RetentionAgent] = {}   # call_id -> live FSM
 stt_sessions: dict[str, AssemblyStream] = {}  # call_id -> live STT pipe
+call_records: list[dict[str, Any]] = []  # outcomes for the boardroom panel
 _ws_clients: set[WebSocket] = set()
 
 
@@ -117,6 +118,43 @@ async def emit(agent: RetentionAgent, events: list[dict[str, Any]]) -> None:
             })
             agents.pop(call_id, None)
             await stop_stt(call_id)
+            call_records.append({
+                "customer_id": call_id,
+                "company": agent.customer.company_name,
+                "outcome": agent.outcome,
+                "discount_pct": agent.current_offer,
+                "arr": (agent.customer.mrr * 12
+                        if agent.outcome == "saved" else 0),
+                "competitors": sorted(agent.countered_competitors),
+                "osint": agent.osint_targets,
+                "min_sentiment": agent.min_sentiment,
+            })
+            if not agents:
+                await broadcast_swarm_complete()
+
+
+async def broadcast_swarm_complete() -> None:
+    """Boardroom metrics once every live call has resolved."""
+    if not call_records:
+        return
+    decided = [r for r in call_records
+               if r["outcome"] in ("saved", "lost")]
+    saved = [r for r in decided if r["outcome"] == "saved"]
+    matrix: dict[str, dict[str, int]] = {}
+    for r in call_records:
+        for comp in r["competitors"]:
+            m = matrix.setdefault(comp, {"count": 0, "saved": 0, "lost": 0})
+            m["count"] += 1
+            m["saved" if r["outcome"] == "saved" else "lost"] += 1
+    await broadcast({
+        "type": "swarm_complete",
+        "arr_saved": round(sum(r["arr"] for r in saved)),
+        "retention": round(100.0 * len(saved) / len(decided), 1)
+        if decided else 0.0,
+        "calls": call_records,
+        "matrix": matrix,
+    })
+    call_records.clear()
 
 
 async def start_agent(customer_id: str) -> RetentionAgent | None:

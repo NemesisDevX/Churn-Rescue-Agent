@@ -272,6 +272,50 @@
   #phonestatus { font-size: 9px; color: var(--dim); letter-spacing: .16em;
     margin-top: 12px; text-transform: uppercase; }
 
+  /* osint toast */
+  #toast { position: fixed; right: 22px; bottom: 84px; z-index: 60;
+    background: rgba(24,24,27,.92); border: 1px solid rgba(245,158,11,.6);
+    color: #fbbf24; border-radius: 10px; padding: 10px 16px; font-size: 10.5px;
+    letter-spacing: .04em; backdrop-filter: blur(14px);
+    box-shadow: 0 0 24px rgba(245,158,11,.35);
+    transform: translateY(16px); opacity: 0; pointer-events: none;
+    transition: all .4s cubic-bezier(.2,.9,.3,1.1); }
+  #toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ceo post-call overlay */
+  #insights { position: fixed; inset: 0; z-index: 50; display: flex;
+    align-items: center; justify-content: center;
+    background: rgba(9,9,11,.72); backdrop-filter: blur(10px);
+    opacity: 0; pointer-events: none; transition: opacity .7s ease; }
+  #insights.show { opacity: 1; pointer-events: auto; }
+  #insights .ipanel { width: 620px; max-width: 92vw; border-radius: 18px;
+    border: 1px solid var(--edge); padding: 28px 32px;
+    background: linear-gradient(160deg, rgba(24,24,27,.96), rgba(9,9,11,.96));
+    box-shadow: 0 40px 90px rgba(0,0,0,.7), 0 0 60px rgba(16,185,129,.08);
+    transform: translateY(24px) scale(.97); transition: transform .7s cubic-bezier(.2,.9,.3,1.05); }
+  #insights.show .ipanel { transform: translateY(0) scale(1); }
+  .ihead { font-size: 11px; letter-spacing: .3em; color: var(--emerald-hi);
+    font-weight: 800; margin-bottom: 18px; }
+  .igrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .imet { border: 1px solid var(--edge); border-radius: 12px; padding: 16px;
+    background: var(--glass); }
+  .imet span { font-size: 30px; font-weight: 800; color: var(--emerald);
+    font-variant-numeric: tabular-nums; }
+  .imet small { display: block; margin-top: 4px; font-size: 9px;
+    letter-spacing: .18em; color: var(--dim); }
+  .isub { margin: 20px 0 10px; font-size: 10px; letter-spacing: .22em;
+    color: var(--dim); font-weight: 700; }
+  .mrow { display: flex; justify-content: space-between; align-items: center;
+    border: 1px solid var(--edge); border-radius: 9px; padding: 9px 13px;
+    margin-bottom: 7px; background: rgba(24,24,27,.6); font-size: 11px; }
+  .mrow .mname { font-weight: 800; letter-spacing: .08em; color: var(--amber); }
+  .mrow .mstats { color: var(--dim); font-size: 10px; }
+  #iClose { margin-top: 20px; width: 100%; padding: 11px; border-radius: 10px;
+    border: 1px solid rgba(16,185,129,.45); background: transparent;
+    color: var(--emerald-hi); font-size: 10px; font-weight: 800;
+    letter-spacing: .22em; cursor: pointer; }
+  #iClose:hover { background: rgba(16,185,129,.12); }
+
   footer { padding: 8px 18px; border-top: 1px solid var(--edge);
     font-size: 9px; color: var(--dim); letter-spacing: .1em;
     display: flex; justify-content: space-between;
@@ -330,6 +374,21 @@
     </div>
   </section>
 </main>
+
+<div id="toast"></div>
+
+<div id="insights">
+  <div class="ipanel">
+    <div class="ihead">POST-CALL STRATEGIC INSIGHTS</div>
+    <div class="igrid">
+      <div class="imet"><span id="iArr">$0</span><small>ARR SAVED THIS SWARM</small></div>
+      <div class="imet"><span id="iRet">0%</span><small>GLOBAL RETENTION RATE</small></div>
+    </div>
+    <div class="isub">COMPETITOR THREAT MATRIX</div>
+    <div id="iMatrix"></div>
+    <button id="iClose">RETURN TO MISSION CONTROL</button>
+  </div>
+</div>
 
 <footer>
   <span>FSM: IDLE &rarr; ENGAGE_LISTEN &rarr; COUNTER_INTEL &rarr; INCENTIVE_AUTH &rarr; OMNICHANNEL_CLOSE &middot; +HUMAN_TAKEOVER</span>
@@ -514,6 +573,7 @@ function handleEvent(ev) {
     }
     case "sentiment": {
       const col = cols[cid]; if (!col) break;
+      lastSent = ev.score;
       const pct = ((ev.score + 1) / 2) * 100;
       col.el.querySelector("[data-mk]").style.left = `calc(${pct}% - 1px)`;
       col.el.querySelector("[data-sval]").textContent = ev.score.toFixed(2);
@@ -544,6 +604,19 @@ function handleEvent(ev) {
       addSys(col, "VP OF SALES BRIDGED IN // human override active");
       break;
     }
+    case "osint": {
+      const col = cols[ev.call_id];
+      if (ev.status === "scraping") {
+        toast(`SYSTEM: Executing Live OSINT Web Scrape for ${ev.competitor}...`);
+        if (col) addSys(col, `OSINT // scraping ${ev.competitor} live...`);
+      } else {
+        toast(`OSINT // ${ev.competitor}: ${ev.status === "done"
+          ? "intel acquired" : "offline -- static intel"}`);
+        if (col) addSys(col, `OSINT // ${ev.competitor}: ${ev.status}`);
+      }
+      break;
+    }
+    case "swarm_complete": showInsights(ev); break;
     case "dispatch": onDispatch(ev); break;
     case "call_ended": {
       const col = cols[cid];
@@ -627,14 +700,40 @@ function onDispatch(ev) {
   if (col) addSys(col, "DISPATCH // whatsapp + stripe + PDF addendum");
 }
 
-/* tts */
+/* tts -- sentiment maps to Maya's delivery: calm under fire, upbeat close */
+let lastSent = 0.0;
 function speak(text) {
   if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.rate = 1.05;
+  if (lastSent < -0.5) { u.rate = 0.8; u.volume = 0.85; u.pitch = 0.9; }
+  else if (lastSent > 0.3) { u.rate = 1.1; u.volume = 1.0; u.pitch = 1.05; }
+  else { u.rate = 1.05; u.volume = 1.0; u.pitch = 1.0; }
   speechSynthesis.speak(u);
 }
+
+/* glowing system toast (osint scrapes, uplink notes) */
+let toastTimer = null;
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 4200);
+}
+
+/* boardroom overlay once the swarm resolves */
+function showInsights(ev) {
+  $("iArr").textContent = "$" + Math.round(ev.arr_saved).toLocaleString();
+  $("iRet").textContent = ev.retention + "%";
+  $("iMatrix").innerHTML = Object.entries(ev.matrix).map(([name, m]) =>
+    `<div class="mrow"><span class="mname">${name.toUpperCase()}</span>` +
+    `<span class="mstats">${m.count} objection${m.count > 1 ? "s" : ""} · ` +
+    `${m.saved} saved / ${m.lost} lost</span></div>`).join("") ||
+    `<div class="mrow"><span class="mstats">no competitor objections</span></div>`;
+  $("insights").classList.add("show");
+}
+$("iClose").onclick = () => $("insights").classList.remove("show");
 
 /* stt: AssemblyAI pcm stream when the server announces it, webspeech else */
 let sttMode = "webspeech";

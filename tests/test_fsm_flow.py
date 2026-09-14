@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from churn_rescue import llm, stt
+from churn_rescue import llm, stt, tts
 from churn_rescue.agent import AgentState, RetentionAgent, MAX_DISCOUNT_PCT
 from churn_rescue.db import Customer
 
@@ -239,6 +239,38 @@ class TestProviderFallbacks(unittest.TestCase):
     def test_stt_none_without_key(self) -> None:
         self.assertFalse(stt.stt_available())
         self.assertFalse(asyncio.run(stt.AssemblyStream().connect()))
+
+    def test_unknown_competitor_triggers_osint(self) -> None:
+        """V5: a vendor with no battlecard -> OSINT events + lookup line."""
+        agent = RetentionAgent(make_customer())
+        agent.start_call()
+        events = agent.handle_utterance(
+            "We're moving to Zenith, it's way cheaper.")
+        osint = events_of(events, "osint")
+        self.assertEqual(len(osint), 2)
+        self.assertEqual(osint[0]["competitor"], "Zenith")
+        self.assertEqual(osint[0]["status"], "scraping")
+        self.assertEqual(osint[1]["status"], "offline")  # no key -> no scrape
+        reply = [e["text"] for e in events_of(events, "transcript")
+                 if e["speaker"] == "agent"]
+        self.assertTrue(any("live pricing" in t for t in reply))
+        visited = [e["to"] for e in events_of(events, "state_change")]
+        self.assertIn("COUNTER_INTEL", visited)
+        self.assertIn("Zenith", agent.countered_competitors)
+
+    def test_known_competitor_skips_osint(self) -> None:
+        agent = RetentionAgent(make_customer())
+        agent.start_call()
+        events = agent.handle_utterance(
+            "We're moving to Salesforce and canceling.")
+        self.assertEqual(events_of(events, "osint"), [])
+        self.assertTrue(events_of(events, "battlecard"))
+
+    def test_emotion_params_map(self) -> None:
+        self.assertEqual(tts.emotion_params(-0.9), (-2, 85))
+        self.assertEqual(tts.emotion_params(-0.51), (-2, 85))
+        self.assertEqual(tts.emotion_params(0.5), (1, 100))
+        self.assertEqual(tts.emotion_params(0.0), (0, 100))
 
 
 if __name__ == "__main__":

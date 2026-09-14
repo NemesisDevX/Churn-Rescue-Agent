@@ -17,6 +17,14 @@ static lines and browser Web Speech, so the demo never breaks.
 | --- | --- | --- | --- |
 | Brain (response gen) | Groq `llama3-70b-8192` via stdlib `urllib` → `api.groq.com/openai/v1/chat/completions` | `churn_rescue/llm.py` | Static FSM lines |
 | Ears (STT) | AssemblyAI realtime `wss://api.assemblyai.com/v2/realtime/ws` (PCM16/16 kHz over `/ws`, `language_detection=true`) | `churn_rescue/stt.py` + `static/pcm-worklet.js` | Browser Web Speech API |
+| OSINT (unknown vendors) | Wikipedia summary via stdlib `urllib`, injected into the Groq context | `churn_rescue/osint.py` | Static lookup line |
+| Voice (TTS) | `System.Speech` with sentiment→rate/volume modulation (angry → −2/85, accepting → +1/100) | `churn_rescue/tts.py` + `speak()` in the dashboard | Neutral voice |
+
+V5 extras: when the last live call resolves, the server broadcasts
+`swarm_complete` — the dashboard dims into a *Post-Call Strategic Insights*
+boardroom panel (ARR saved, retention rate, competitor threat matrix). A
+vendor named with no battlecard triggers a glowing `SYSTEM: Live OSINT`
+toast while Maya stalls for the scrape.
 
 ```powershell
 $env:GROQ_API_KEY = "gsk_..."        # dynamic, same-language responses
