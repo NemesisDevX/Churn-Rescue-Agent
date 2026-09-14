@@ -1,11 +1,93 @@
 # Churn-Rescue-Agent
 
-**Autonomous outbound retention agent for the CALL-E Hackathon** — detects
-cancellation risk, calls the customer, counters competitor objections with
-real battlecards, computes an LTV-capped incentive, and dispatches a live
-Stripe + WhatsApp retention offer *during the call*.
+**Autonomous Revenue Protection at machine speed.** Churn-Rescue-Agent is a
+zero-latency voice AI platform that detects cancellation risk, dials a
+**concurrent swarm** of retention calls, reasons on a Groq LPU in
+sub-500ms, counters competitor objections with live OSINT intel, negotiates
+LTV-capped incentives, and closes the save with a signed PDF addendum +
+Stripe checkout pushed to the customer's phone — *before they hang up*.
+
+Every minute of churn risk left undialed is ARR walking out the door. This
+agent turns "cancellation request received" into "retention offer signed"
+in a single phone call — and briefs your CEO on exactly which competitors
+are attacking your base when the swarm lands.
 
 Pure Python + vanilla HTML/JS/CSS. **No Node.js. No build step.**
+
+## System Blueprint
+
+```mermaid
+flowchart TB
+    subgraph OPS["🖥 MISSION CONTROL — vanilla JS dashboard"]
+        direction LR
+        ROSTER["At-Risk Roster<br/>10 enterprise accounts<br/>risk-sorted"]
+        SWARM{{"⚡ SWARM DIAL"}}
+        COL1["Call Column 1<br/>FSM · sentiment · transcript"]
+        COL2["Call Column 2<br/>FSM · sentiment · transcript"]
+        COL3["Call Column 3<br/>FSM · sentiment · transcript"]
+        OVR["⚠ MANUAL OVERRIDE<br/>critical-churn button"]
+        PHONE["📱 iPhone Mockup<br/>WhatsApp + PDF + Stripe CTA"]
+        CEO["Post-Call Strategic<br/>Insights overlay<br/>ARR · win-rate · threat matrix"]
+        TOAST["SYSTEM: Live OSINT<br/>toast"]
+    end
+
+    subgraph EDGE["🌐 ASGI EDGE — Starlette + Uvicorn :8000"]
+        REST["/api/customers · /api/calls/*"]
+        WSS["/ws — JSON telemetry bus<br/>+ PCM16 audio uplink<br/>+ capabilities handshake"]
+        FILES["/contracts — signed PDF serving"]
+        AGG["swarm_complete aggregator<br/>ARR · retention · threat matrix"]
+    end
+
+    subgraph BRAIN["🧠 REASONING TIER"]
+        FSM1["RetentionAgent FSM #1"]
+        FSM2["RetentionAgent FSM #2"]
+        FSM3["RetentionAgent FSM #3"]
+        GROQ["Groq LPU<br/>llama3-70b-8192<br/>sub-500ms · same-language<br/>(EN / ES / FR / AR)"]
+        OSINT["osint.py<br/>live web scrape<br/>unknown-vendor intel"]
+        BC["battlecards.json<br/>Salesforce · HubSpot ·<br/>Linear · Acme"]
+    end
+
+    subgraph EARS["👂 REAL-TIME STT"]
+        AAI["AssemblyAI realtime ws<br/>language_detection=true"]
+        WSP["browser Web Speech<br/>(zero-dep fallback)"]
+    end
+
+    subgraph VOICE["🗣 EMOTIONAL TTS"]
+        SYS["System.Speech<br/>sentiment→rate/volume<br/>angry: −2/85 · close: +1/100"]
+        WEBSPK["speechSynthesis<br/>(live dashboard voice)"]
+    end
+
+    subgraph CLOSE["💰 OMNICHANNEL CLOSE"]
+        PDF["contracts.py<br/>zero-dep PDF writer<br/>Subscription Addendum"]
+        STRIPE["Stripe Retention<br/>Checkout URL"]
+        WA["WhatsApp dispatch<br/>wamid.simulated.*"]
+    end
+
+    DB[("SQLite CRM<br/>customers · call_log")]
+
+    ROSTER --> SWARM
+    SWARM -->|concurrent| WSS
+    WSS --> FSM1 & FSM2 & FSM3
+    FSM1 & FSM2 & FSM3 -->|state_change / transcript /<br/>sentiment / offer events| WSS
+    WSS --> COL1 & COL2 & COL3
+    FSM1 & FSM2 & FSM3 -.->|sentiment ≤ −0.90| OVR
+    OVR -->|override → HUMAN_TAKEOVER| WSS
+    FSM1 & FSM2 & FSM3 -->|chat.completions via urllib| GROQ
+    FSM1 & FSM2 & FSM3 -->|known vendor| BC
+    FSM1 & FSM2 & FSM3 -->|unknown vendor| OSINT
+    OSINT -.->|brief → Groq ctx| GROQ
+    OSINT --> TOAST
+    EARS -->|FinalTranscript| WSS
+    FSM1 & FSM2 & FSM3 -->|agent lines| VOICE
+    FSM1 & FSM2 & FSM3 -->|OMNICHANNEL_CLOSE| CLOSE
+    PDF --> FILES --> PHONE
+    STRIPE & WA --> PHONE
+    FSM1 & FSM2 & FSM3 --> DB
+    DB --> REST --> ROSTER
+    WSS --> AGG --> CEO
+```
+
+## V4 provider layer (Groq + AssemblyAI)
 
 ## V4 provider layer (Groq + AssemblyAI)
 
@@ -170,18 +252,20 @@ python seed_customers.py          # 10 enterprise accounts -> data/churn_rescue.
 python -m churn_rescue.server     # http://127.0.0.1:8000
 ```
 
-Open `http://127.0.0.1:8000`, press **CALL NOW** on a high-risk row, then either
-click the mic (Web Speech API STT, Chrome/Edge) or type in the fallback box.
-The agent's voice is synthesized with `speechSynthesis`.
+Open `http://127.0.0.1:8000` and hit **⚡ SWARM DIAL — TOP 3** to launch three
+concurrent retention calls, or **CALL NOW** on a single high-risk row. Type in
+a column's input (or click 🎙 for voice) to play the customer.
 
 ### Suggested demo script (as the customer)
 
-1. `"I'm furious — we're canceling and moving to Salesforce, your pricing is a joke."`
-   → `COUNTER_INTEL` fires the Salesforce battlecard, then `INCENTIVE_AUTH` opens at ~15%.
-2. `"That's still not enough. Acme is half your price."`
-   → Acme battlecard + offer climbs toward the 24.6% ceiling.
-3. `"Fine, I'll take the deal."`
-   → `OMNICHANNEL_CLOSE`: Stripe checkout link + WhatsApp dispatch card pop live.
+1. `"This is the worst garbage nightmare ever — we're canceling and moving to Zenith."`
+   → sentiment ≤ −0.90 → column flashes red, `MANUAL OVERRIDE` glows; Zenith has
+   no battlecard → live OSINT scrape fires with a toast.
+2. Click **⚠ MANUAL OVERRIDE** → `HUMAN_TAKEOVER`, Maya bridges in the VP of Sales.
+3. `"Honestly it's just too expensive."` → offer escalates a rung.
+4. `"Fine, I'll take the deal."` → `OMNICHANNEL_CLOSE`: Stripe link + PDF
+   addendum land on the iPhone mockup; when the last call ends the
+   **Post-Call Strategic Insights** boardroom overlay fades in.
 
 ## API
 
@@ -190,9 +274,11 @@ The agent's voice is synthesized with `speechSynthesis`.
 | `GET` | `/` | Mission Control dashboard |
 | `GET` | `/api/customers` | At-risk roster, sorted by churn risk |
 | `POST` | `/api/calls/start` | `{customer_id}` → arms FSM, streams events |
-| `POST` | `/api/calls/utterance` | `{text}` — REST fallback for utterances |
+| `POST` | `/api/calls/utterance` | `{call_id, text}` — REST fallback for utterances |
+| `POST` | `/api/calls/override` | `{call_id}` → `HUMAN_TAKEOVER`, VP bridge line |
 | `POST` | `/api/calls/end` | Abort active call |
-| `WS` | `/ws` | Telemetry + `start_call` / `utterance` / `end_call` messages |
+| `GET` | `/contracts/<file>` | Signed PDF addenda |
+| `WS` | `/ws` | Telemetry + `start_call` / `swarm` / `utterance` / `override` / `end_call` / `stt_begin` / `stt_chunk` / `stt_end` |
 
 ## Verification
 
@@ -208,13 +294,19 @@ enforcement, and dispatch payload integrity. No server or browser needed.
 
 ```text
 churn_rescue/
-  agent.py            # FSM engine: states, intents, sentiment, incentive math
+  agent.py            # FSM engine: swarm FSMs, intents, sentiment, OSINT routing
+  llm.py              # Groq llama3-70b-8192 via stdlib urllib (static fallback)
+  stt.py              # AssemblyAI realtime session bridge (Web Speech fallback)
+  osint.py            # zero-shot competitor brief scrape (urllib, no SDK)
+  tts.py              # System.Speech synth w/ sentiment→rate/volume modulation
+  contracts.py        # zero-dependency PDF Subscription Addendum writer
   battlecards.json    # competitor intel: Salesforce, HubSpot, Linear, Acme
   db.py               # SQLite schema + helpers (customers, call_log)
-  server.py           # Starlette app: REST + WebSocket + static hosting
-  static/index.html   # Mission Control dashboard (vanilla JS/CSS)
+  server.py           # Starlette app: REST + WS telemetry/stt + swarm aggregator
+  static/index.html   # Mission Control: 3-col swarm UI, iPhone mockup, CEO overlay
+  static/pcm-worklet.js # AudioWorklet: Float32 → PCM16 for the STT uplink
 seed_customers.py     # seeds 10 enterprise accounts
-tests/test_fsm_flow.py# headless full-call simulation
+tests/test_fsm_flow.py# headless full-call simulation + provider fallback tests
 requirements.txt      # frozen, pure-Python deps only
 ```
 
