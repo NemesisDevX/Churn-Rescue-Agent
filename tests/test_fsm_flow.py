@@ -1,7 +1,5 @@
-"""Headless full-call sim: asserts 100% FSM state + transition coverage.
-
-Run:  python -m unittest tests.test_fsm_flow -v
-"""
+# headless full-call sim -- covers every fsm state + the key transitions
+# python -m unittest tests.test_fsm_flow -v
 from __future__ import annotations
 
 import asyncio
@@ -46,13 +44,13 @@ def events_of(events: list[dict], etype: str) -> list[dict]:
 
 
 class TestAngryCustomerFlow(unittest.TestCase):
-    """fury -> battlecards -> escalation -> save."""
+    # fury -> battlecards -> escalation -> save
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.agent = RetentionAgent(make_customer())
         self.agent.contracts_dir = Path(self._tmp.name)
-        # pin the no-key env so tests always exercise the static fallback
+        # force no keys so tests never touch the network
         self._env = {k: os.environ.pop(k, None)
                      for k in ("GROQ_API_KEY", "ASSEMBLYAI_API_KEY")}
 
@@ -205,7 +203,7 @@ class TestAngryCustomerFlow(unittest.TestCase):
 
 
 class TestProviderFallbacks(unittest.TestCase):
-    """V4: Groq/AssemblyAI must degrade silently without keys or on errors."""
+    # groq/assemblyai have to degrade quietly with no keys
 
     def setUp(self) -> None:
         self._env = {k: os.environ.pop(k, None)
@@ -241,7 +239,7 @@ class TestProviderFallbacks(unittest.TestCase):
         self.assertFalse(asyncio.run(stt.AssemblyStream().connect()))
 
     def test_unknown_competitor_triggers_osint(self) -> None:
-        """V5: a vendor with no battlecard -> OSINT events + lookup line."""
+        # vendor with no battlecard -> osint events + lookup line
         agent = RetentionAgent(make_customer())
         agent.start_call()
         events = agent.handle_utterance(

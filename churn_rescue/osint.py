@@ -1,8 +1,5 @@
-"""Zero-shot competitor OSINT: public brief via stdlib urllib only.
-
-Returns ``None`` on any failure (offline, 404, timeout) -- the FSM always
-keeps its static/generic fallback path.
-"""
+# wiki summary scrape for vendors we don't have a battlecard for
+# None on any failure -- the static line covers it
 from __future__ import annotations
 
 import json
@@ -13,7 +10,7 @@ WIKI_SUMMARY = "https://en.wikipedia.org/api/rest_v1/page/summary/{name}"
 
 
 def fetch_company_brief(name: str, timeout: float = 3.0) -> str | None:
-    """Short public description of an unknown competitor; None on failure."""
+    # FIXME: wikipedia is a placeholder, swap for a real pricing feed later
     if not name:
         return None
     try:

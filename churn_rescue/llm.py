@@ -1,8 +1,5 @@
-"""Groq LPU inference over stdlib urllib -- no SDKs, no pydantic.
-
-Falls back to ``None`` on any failure (missing key, 401, timeout) so the
-static FSM lines always have a path back in.
-"""
+# groq over stdlib urllib -- app control kills the sdk deps here
+# any failure -> None so the static fsm lines always win
 from __future__ import annotations
 
 import json
@@ -30,7 +27,7 @@ def llm_available() -> bool:
 
 def groq_reply(messages: list[dict[str, str]],
                timeout: float = GROQ_TIMEOUT_S) -> str | None:
-    """One chat completion; ``None`` means 'use the static line'."""
+    # None = "use the static line"
     key = os.environ.get("GROQ_API_KEY")
     if not key:
         return None

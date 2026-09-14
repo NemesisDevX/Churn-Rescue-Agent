@@ -1,8 +1,5 @@
-"""Zero-dependency PDF generator for retention addenda.
-
-reportlab drags in PIL/_imaging which won't load in this environment, so we
-emit raw PDF by hand -- one Letter page, Helvetica, signed-off layout.
-"""
+# reportlab drags in PIL/_imaging which won't load here, so we just
+# write raw pdf by hand -- one letter page, helvetica
 from __future__ import annotations
 
 import uuid
@@ -28,7 +25,7 @@ def render_addendum(
     discount_pct: float,
     out_dir: Path = CONTRACTS_DIR,
 ) -> dict[str, str]:
-    """Write the Subscription Addendum PDF; returns {filename, path, title}."""
+    # returns {filename, path, url, title, ref}
     out_dir.mkdir(parents=True, exist_ok=True)
     ref = uuid.uuid4().hex[:8].upper()
     fname = f"addendum_{customer.customer_id}_{ref.lower()}.pdf"

@@ -1,9 +1,5 @@
-"""Emotional TTS via System.Speech (powershell, zero pip deps).
-
-The FSM sentiment score maps straight onto the synthesizer: angry
-customers get a slower, softer Maya; accepting customers get an upbeat,
-confident close.
-"""
+# system.speech via powershell -- zero pip deps, works under app control
+# sentiment drives rate/volume: angry caller -> slower + softer maya
 from __future__ import annotations
 
 import base64
@@ -15,7 +11,7 @@ CUSTOMER_VOICE = "Microsoft David Desktop"
 
 
 def emotion_params(sentiment: float) -> tuple[int, int]:
-    """sentiment -> (rate, volume) for SpeechSynthesizer."""
+    # sentiment -> (rate, volume)
     if sentiment < -0.5:
         return -2, 85    # calm, slower, empathetic under fire
     if sentiment > 0.3:
@@ -25,7 +21,7 @@ def emotion_params(sentiment: float) -> tuple[int, int]:
 
 def synth(text: str, out_path: str | Path,
           voice: str = AGENT_VOICE, sentiment: float = 0.0) -> Path | None:
-    """Render one line to wav; None if the speech stack is unavailable."""
+    # wav path, or None if the speech stack isn't there
     rate, volume = emotion_params(sentiment)
     safe = text.replace("'", "''")
     ps = (

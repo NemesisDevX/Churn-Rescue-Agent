@@ -1,9 +1,5 @@
-"""Retention call FSM. One instance = one call.
-
-IDLE -> ENGAGE_LISTEN -> COUNTER_INTEL -> INCENTIVE_AUTH -> OMNICHANNEL_CLOSE
-
-Public methods return event dicts; server.py broadcasts them over /ws.
-"""
+# one instance = one live call; events get fanned out over /ws
+# IDLE -> ENGAGE_LISTEN -> COUNTER_INTEL -> INCENTIVE_AUTH -> OMNICHANNEL_CLOSE
 from __future__ import annotations
 
 import json
@@ -58,7 +54,7 @@ _INTENSIFIERS = {
 
 
 def score_sentiment(text: str) -> float:
-    """[-1.0, 1.0]; handles negation + intensifiers."""
+    # crude lexicon scoring in [-1, 1]; handles negation + intensifiers
     tokens = re.findall(r"[a-zA-Z']+", text.lower())
     score, negate, boost = 0.0, 1.0, 1.0
     for tok in tokens:
@@ -159,14 +155,13 @@ class RetentionAgent:
 
     # incentive math
     def _authorize_discount(self) -> float:
-        """10% base + LTV boost ($5k -> +1%, cap +10) + risk boost (cap +5),
-        hard-capped at 25%."""
+        # 10% base + ltv bump ($5k -> +1%, cap +10) + risk bump (cap +5), 25% max
         ltv_boost = min(10.0, max(0.0, self.customer.ltv) / 5000.0)
         risk_boost = min(5.0, max(0.0, self.customer.churn_risk_score) * 5.0)
         return round(min(MAX_DISCOUNT_PCT, 10.0 + ltv_boost + risk_boost), 1)
 
     def _build_offer_ladder(self) -> list[float]:
-        """Open conservative, close at the ceiling."""
+        # open low, walk up to the ceiling
         cap = self.authorized_discount
         ladder = sorted({round(cap * f, 1) for f in (0.6, 0.8, 1.0)})
         return [x for x in ladder if x > 0]
@@ -185,8 +180,9 @@ class RetentionAgent:
         self.transcript.append({"speaker": "agent", "text": text})
         return {"type": "transcript", "speaker": "agent", "text": text}
 
-    # groq LPU generation; every dynamic line keeps its static twin as
-    # the fallback for missing keys / api errors
+    # every dynamic line keeps its static twin as fallback for
+    # missing keys / api errors
+    # hack: the director note rides in as a user msg, cheapest way to steer it
     def _llm_messages(self, hint: str) -> list[dict[str, str]]:
         c = self.customer
         ctx = (
@@ -210,7 +206,7 @@ class RetentionAgent:
         return self._ev_agent(reply or fallback)
 
     def start_call(self) -> list[dict[str, Any]]:
-        """IDLE -> ENGAGE_LISTEN; emits the greeting the TTS layer speaks."""
+        # greeting stays static -- don't let the LLM freestyle the opener
         events: list[dict[str, Any]] = []
         self.call_active = True
         self._goto(AgentState.ENGAGE_LISTEN, events)
@@ -224,7 +220,6 @@ class RetentionAgent:
         return events
 
     def handle_utterance(self, text: str) -> list[dict[str, Any]]:
-        """One customer utterance in, events out."""
         events: list[dict[str, Any]] = []
         if not self.call_active:
             return events
@@ -310,8 +305,8 @@ class RetentionAgent:
         return events
 
     def takeover(self) -> list[dict[str, Any]]:
-        """Operator hits MANUAL OVERRIDE -> HUMAN_TAKEOVER, bridge line, back
-        to ENGAGE_LISTEN with the human (VP) driving."""
+        # MANUAL OVERRIDE -> bridge the VP in, then hand the call back
+        # the bridge line is spec-mandated -- keep groq away from it
         events: list[dict[str, Any]] = []
         if not self.call_active:
             return events
@@ -445,7 +440,7 @@ class RetentionAgent:
         })
 
     def _osint_intel(self, name: str, events: list[dict[str, Any]]) -> None:
-        """Unknown vendor -> COUNTER_INTEL via live web scrape + Groq."""
+        # unknown vendor: scrape first, feed the brief into groq
         self._goto(AgentState.COUNTER_INTEL, events)
         self.countered_competitors.add(name)
         self.osint_targets.append(name)
@@ -483,7 +478,7 @@ class RetentionAgent:
         return None
 
     def _detect_unknown_competitor(self, text: str) -> str | None:
-        """A vendor name with no battlecard -- fresh OSINT target."""
+        # named vendor with no battlecard = fresh osint target
         for rx in (_UNKNOWN_AFTER, _UNKNOWN_BEFORE):
             m = rx.search(text)
             if m:

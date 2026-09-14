@@ -1,10 +1,6 @@
-"""AssemblyAI real-time STT bridge.
-
-The browser streams raw PCM16/16kHz chunks over the dashboard websocket;
-this class forwards them to AssemblyAI's realtime endpoint and yields
-final transcripts back. Any failure degrades to ``None`` so the UI stays
-on the Web Speech API path.
-"""
+# pcm16/16k chunks come in over the dashboard ws, get forwarded to
+# assemblyai realtime, finals get pushed back into the fsm
+# any failure -> ui stays on the webspeech path
 from __future__ import annotations
 
 import asyncio
@@ -23,7 +19,7 @@ def stt_available() -> bool:
 
 
 class AssemblyStream:
-    """One AssemblyAI realtime session for one call."""
+    # one session per call
 
     def __init__(self) -> None:
         self.ws: Any = None
@@ -59,7 +55,7 @@ class AssemblyStream:
             self.dead = True
 
     async def transcripts(self) -> AsyncIterator[str]:
-        """Yield FinalTranscript texts until the socket drops."""
+        # yields FinalTranscript text till the socket drops
         if self.ws is None:
             return
         try:

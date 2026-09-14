@@ -1,4 +1,5 @@
-"""SQLite store: account roster + call_log. Stdlib only, no ORM."""
+# sqlite roster + call_log. stdlib only, no orm.
+# TODO: sqlite won't survive >1 writer, swap for postgres if this ships
 from __future__ import annotations
 
 import sqlite3
@@ -76,7 +77,7 @@ def _connect(db_path: str | Path) -> sqlite3.Connection:
 
 
 def init_db(db_path: str | Path = DEFAULT_DB_PATH) -> None:
-    """Idempotent schema init, called at startup and by the seeder."""
+    # idempotent; runs at startup and from the seeder
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:

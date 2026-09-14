@@ -1,10 +1,6 @@
-"""ASGI server: dashboard + roster API + /ws telemetry channel.
-
-Supports N concurrent retention calls (swarm mode) -- every agent gets a
-call_id and every outbound event carries it so the UI can route per column.
-
-    python -m churn_rescue.server   ->  http://127.0.0.1:8000
-"""
+# dashboard + roster api + /ws telemetry bus
+# N concurrent calls, keyed by call_id so the UI can route per column
+#   python -m churn_rescue.server  ->  http://127.0.0.1:8000
 from __future__ import annotations
 
 import asyncio
@@ -42,16 +38,17 @@ agents: dict[str, RetentionAgent] = {}   # call_id -> live FSM
 stt_sessions: dict[str, AssemblyStream] = {}  # call_id -> live STT pipe
 call_records: list[dict[str, Any]] = []  # outcomes for the boardroom panel
 _ws_clients: set[WebSocket] = set()
+# TODO: move agents/call_records into redis when we scale past one box
 
 
 async def run_utterance(agent: RetentionAgent, text: str) -> None:
-    """handle_utterance can block on Groq urllib -- keep it off the loop."""
+    # urllib blocks -- keep groq off the event loop
     events = await asyncio.to_thread(agent.handle_utterance, text)
     await emit(agent, events)
 
 
 async def start_stt(call_id: str) -> None:
-    """Bridge browser mic chunks -> AssemblyAI -> FSM utterances."""
+    # browser mic chunks -> assemblyai -> fsm utterances
     stream = AssemblyStream()
     if not await stream.connect():
         await broadcast({"type": "stt_status", "call_id": call_id,
@@ -75,7 +72,7 @@ async def stop_stt(call_id: str) -> None:
 
 
 async def broadcast(event: dict[str, Any]) -> None:
-    """Fan out to all dashboards; a stalled socket must not starve the rest."""
+    # fanout to every dashboard; one stalled socket mustn't starve the rest
     payload = json.dumps(event)
     clients = list(_ws_clients)
 
@@ -92,7 +89,7 @@ async def broadcast(event: dict[str, Any]) -> None:
 
 
 async def emit(agent: RetentionAgent, events: list[dict[str, Any]]) -> None:
-    """Stamp call_id on each event, broadcast, persist on termination."""
+    # stamp call_id on each event, broadcast, persist on close
     call_id = agent.customer.customer_id
     for event in events:
         event.setdefault("call_id", call_id)
@@ -134,7 +131,7 @@ async def emit(agent: RetentionAgent, events: list[dict[str, Any]]) -> None:
 
 
 async def broadcast_swarm_complete() -> None:
-    """Boardroom metrics once every live call has resolved."""
+    # boardroom rollup once the last live call resolves
     if not call_records:
         return
     decided = [r for r in call_records
@@ -158,7 +155,7 @@ async def broadcast_swarm_complete() -> None:
 
 
 async def start_agent(customer_id: str) -> RetentionAgent | None:
-    """Arm an FSM for one account and fire the greeting. No-op if live."""
+    # arm an fsm + fire the greeting; no-op if that call is already live
     if customer_id in agents and agents[customer_id].call_active:
         return None
     customer = get_customer(customer_id, DEFAULT_DB_PATH)
@@ -193,7 +190,7 @@ async def api_start_call(request) -> JSONResponse:
 
 
 async def api_utterance(request) -> JSONResponse:
-    """Text fallback when Web Speech API is unavailable."""
+    # text fallback for when webspeech isn't around
     body = await request.json()
     agent = agents.get(body.get("call_id"))
     if agent is None or not agent.call_active:
